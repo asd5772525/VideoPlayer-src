@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg">#0D0F14</color>
+    <color name="accent">#FF5C8A</color>
+
+    <style name="Theme.VPlayer" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/bg</item>
+        <item name="android:colorAccent">@color/accent</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@color/bg</item>
+    </style>
+
+    <style name="Theme.VPlayer.Player">
+        <item name="android:windowBackground">@android:color/black</item>
+        <item name="android:navigationBarColor">@android:color/black</item>
+    </style>
+</resources>

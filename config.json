@@ -1,0 +1,26 @@
+{
+  "configVersion": 1,
+  "sources": [],
+  "parses": [],
+  "player": {
+    "bufferSeconds": 30,
+    "hwDecode": true,
+    "preloadNext": true,
+    "autoNext": true,
+    "skipIntro": 0,
+    "skipOutro": 0,
+    "defaultSpeed": 1.0,
+    "longPressSpeed": 3.0,
+    "directFirst": true,
+    "autoSpeedTest": true,
+    "downloadConcurrency": 8,
+    "maxDownloadTasks": 2
+  },
+  "notice": {
+    "enabled": false,
+    "id": "notice-1",
+    "title": "公告",
+    "text": "",
+    "link": ""
+  }
+}

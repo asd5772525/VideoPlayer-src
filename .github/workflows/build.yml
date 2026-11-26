@@ -1,0 +1,191 @@
+name: 构建与发布 APK
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+    paths-ignore:
+      - 'README.md'
+      - 'docs/**'
+      - 'update.json'
+      - 'status.json'
+      - 'removed.json'
+      - 'scripts/**'
+      - '.github/workflows/source-check.yml'
+  workflow_dispatch:
+    inputs:
+      release:
+        description: '发布 Release 并更新 update.json（推送 OTA）'
+        type: boolean
+        default: true
+      changelog:
+        description: '更新说明（多条用 | 分隔，可留空）'
+        type: string
+        default: ''
+      force:
+        description: '强制更新（旧版本必须升级）'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: 计算版本号 / 是否发布
+        id: meta
+        shell: bash
+        run: |
+          RUN=${{ github.run_number }}
+          VERSION_CODE=$((100 + RUN))
+          BASE=$(git tag -l 'v[0-9]*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 | sed 's/^v//')
+          [ -z "$BASE" ] && BASE="1.0.0"
+          RELEASE=false
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            RELEASE=true
+            VERSION_NAME="${GITHUB_REF_NAME#v}"
+            TAG="$GITHUB_REF_NAME"
+          else
+            VERSION_NAME="${BASE}-r${RUN}"
+            TAG="v${VERSION_NAME}"
+            if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+              RELEASE="${{ inputs.release }}"
+            elif git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" 2>/dev/null | grep -qx 'config.json'; then
+              # 在 GitHub 网页上直接改了 config.json：自动发布，已安装的 App 通过 OTA 收到新配置
+              RELEASE=true
+            fi
+          fi
+          BRANCH="${{ github.event.repository.default_branch }}"
+          REPO="${{ github.repository }}"
+          UPDATE_URLS="https://raw.githubusercontent.com/${REPO}/${BRANCH}/update.json,https://cdn.jsdelivr.net/gh/${REPO}@${BRANCH}/update.json,https://fastly.jsdelivr.net/gh/${REPO}@${BRANCH}/update.json,https://github.com/${REPO}/releases/latest/download/update.json"
+          echo "code=$VERSION_CODE" >> $GITHUB_OUTPUT
+          echo "name=$VERSION_NAME" >> $GITHUB_OUTPUT
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "release=$RELEASE" >> $GITHUB_OUTPUT
+          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+          echo "update_urls=$UPDATE_URLS" >> $GITHUB_OUTPUT
+          echo "版本 $VERSION_NAME ($VERSION_CODE)  发布: $RELEASE"
+
+      - name: 解码签名文件（未配置 Secrets 时使用 debug 签名）
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            if [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ]; then
+              echo "::error::已配置 KEYSTORE_BASE64，但缺少 KEYSTORE_PASSWORD 或 KEY_ALIAS，请在仓库 Settings → Secrets and variables → Actions 中补齐 4 个 Secret"
+              exit 1
+            fi
+            echo "$KEYSTORE_BASE64" | tr -d ' \r\n' | base64 -d > "$RUNNER_TEMP/release.jks" || { echo "::error::KEYSTORE_BASE64 不是有效的 base64，请重新复制 KEYSTORE_BASE64.txt 的全部内容"; exit 1; }
+            if ! keytool -list -keystore "$RUNNER_TEMP/release.jks" -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" > /dev/null 2>&1; then
+              echo "::error::签名文件无法打开：KEYSTORE_PASSWORD 或 KEY_ALIAS 不正确"
+              exit 1
+            fi
+            echo "KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> $GITHUB_ENV
+            echo "使用正式签名"
+          else
+            echo "::warning::未配置 KEYSTORE_BASE64，使用 debug 签名（不同机器构建的 debug 签名不同，OTA 覆盖安装会失败，请尽快配置正式签名）"
+          fi
+
+      - name: 构建 Release APK
+        shell: bash
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleRelease \
+            -PversionCode=${{ steps.meta.outputs.code }} \
+            -PversionName=${{ steps.meta.outputs.name }} \
+            -PupdateUrls="${{ steps.meta.outputs.update_urls }}"
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk "dist/VideoPlayer-v${{ steps.meta.outputs.name }}.apk"
+          ls -la dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VideoPlayer-v${{ steps.meta.outputs.name }}
+          path: dist/*.apk
+
+      - name: 生成 update.json
+        if: steps.meta.outputs.release == 'true'
+        shell: bash
+        env:
+          INPUT_CHANGELOG: ${{ inputs.changelog }}
+          INPUT_FORCE: ${{ inputs.force }}
+        run: |
+          APK="dist/VideoPlayer-v${{ steps.meta.outputs.name }}.apk"
+          export APK_NAME=$(basename "$APK")
+          export MD5=$(md5sum "$APK" | cut -d' ' -f1)
+          export SIZE=$(python3 -c "import os;print('%.1f MB'%(os.path.getsize('$APK')/1048576))")
+          if [ -z "$INPUT_CHANGELOG" ]; then
+            if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+              INPUT_CHANGELOG=$(git tag -l --format='%(contents:subject)' "$GITHUB_REF_NAME")
+            fi
+            [ -z "$INPUT_CHANGELOG" ] && INPUT_CHANGELOG=$(git log -1 --pretty=%s)
+          fi
+          export INPUT_CHANGELOG
+          export VCODE=${{ steps.meta.outputs.code }} VNAME=${{ steps.meta.outputs.name }} TAG=${{ steps.meta.outputs.tag }} REPO=${{ github.repository }}
+          python3 - <<'PY'
+          import json, os
+          log = [s.strip() for s in os.environ.get("INPUT_CHANGELOG", "").split("|") if s.strip()] or ["优化体验，修复若干问题"]
+          data = {
+              "versionCode": int(os.environ["VCODE"]),
+              "versionName": os.environ["VNAME"],
+              "apkUrl": f"https://github.com/{os.environ['REPO']}/releases/download/{os.environ['TAG']}/{os.environ['APK_NAME']}",
+              "size": os.environ["SIZE"],
+              "changelog": log,
+              "force": os.environ.get("INPUT_FORCE") == "true",
+              "md5": os.environ["MD5"],
+          }
+          json.dump(data, open("dist/update.json", "w", encoding="utf-8"), ensure_ascii=False, indent=2)
+          print(json.dumps(data, ensure_ascii=False, indent=2))
+          PY
+
+      - name: 创建 GitHub Release
+        if: steps.meta.outputs.release == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: v${{ steps.meta.outputs.name }}
+          target_commitish: ${{ github.sha }}
+          make_latest: true
+          files: |
+            dist/*.apk
+            dist/update.json
+
+      - name: 把 update.json 提交回默认分支（已安装的 App 由此收到 OTA）
+        if: steps.meta.outputs.release == 'true'
+        continue-on-error: true
+        shell: bash
+        run: |
+          BR=${{ steps.meta.outputs.branch }}
+          cp dist/update.json "$RUNNER_TEMP/update.json"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin "$BR"
+          git checkout -B "$BR" "origin/$BR"
+          cp "$RUNNER_TEMP/update.json" update.json
+          git add update.json
+          git commit -m "chore: update.json → v${{ steps.meta.outputs.name }} [skip ci]" || exit 0
+          git push origin "$BR"

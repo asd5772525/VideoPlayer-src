@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>影视 · 管理后台</title>
+<style>
+:root{--bg:#0d0f14;--card:#151821;--card2:#1d2029;--line:#262a35;--txt:#e8eaf0;--sub:#8a8d9c;--acc:#ff5c8a;--acc2:#7b5cff;--ok:#3ecf8e;--bad:#ff5a5a;--warn:#e5b53a;--r:14px}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--txt);font:14px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif;padding-bottom:96px}
+a{color:var(--acc)}
+a.btn{text-decoration:none}
+.wrap{max-width:880px;margin:0 auto;padding:0 14px}
+header{position:sticky;top:0;z-index:20;background:rgba(13,15,20,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.top{display:flex;align-items:center;gap:10px;padding:12px 0}
+.logo{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--acc),var(--acc2));display:flex;align-items:center;justify-content:center;font-weight:700}
+.top h1{font-size:17px;flex:1}
+.top h1 small{display:block;font-size:11px;color:var(--sub);font-weight:400}
+.tabs{display:flex;gap:4px;overflow-x:auto;padding-bottom:8px;scrollbar-width:none}
+.tabs button{background:none;border:0;color:var(--sub);font-size:14px;padding:6px 12px;border-radius:18px;white-space:nowrap;cursor:pointer}
+.tabs button.on{background:#ff5c8a22;color:var(--acc);font-weight:600}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:0;border-radius:10px;padding:9px 14px;font-size:13px;background:var(--card2);color:var(--txt);cursor:pointer;white-space:nowrap}
+.btn:hover{filter:brightness(1.15)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.pri{background:var(--acc);color:#fff}
+.btn.ghost{background:none;color:var(--sub)}
+.btn.danger{color:var(--bad)}
+.btn.sm{padding:5px 10px;font-size:12px;border-radius:8px}
+.btn.big{padding:12px 18px;font-size:15px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.sp{flex:1}
+.hint{background:#7b5cff14;border:1px solid #7b5cff33;border-radius:var(--r);padding:12px 14px;color:#c9c3ff;font-size:13px;margin:14px 0}
+.hint b{color:#fff}
+.sec{margin:18px 0 10px;display:flex;align-items:center;gap:8px}
+.sec h2{font-size:16px;flex:1}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-bottom:10px;position:relative}
+.card.drag{opacity:.4}
+.card.over{border-color:var(--acc)}
+.card.off{opacity:.55}
+.ch{display:flex;align-items:center;gap:10px}
+.handle{cursor:grab;color:var(--sub);font-size:18px;user-select:none;padding:0 2px}
+.dot{width:10px;height:10px;border-radius:5px;background:#555;flex-shrink:0}
+.dot.ok{background:var(--ok)}.dot.bad{background:var(--bad)}
+.name{font-weight:600;font-size:15px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tag{font-size:11px;padding:1px 7px;border-radius:6px;background:var(--card2);color:var(--sub)}
+.tag.acc{background:#ff5c8a22;color:var(--acc)}
+.tag.ok{background:#3ecf8e22;color:var(--ok)}.tag.bad{background:#ff5a5a22;color:var(--bad)}.tag.warn{background:#e5b53a22;color:var(--warn)}
+.url{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;color:var(--sub);word-break:break-all;margin:6px 0 4px}
+.meta{font-size:12px;color:var(--sub)}
+.acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+label.f{display:block;margin:10px 0 4px;font-size:13px;color:var(--sub)}
+input[type=text],input[type=url],input[type=number],input[type=password],textarea,select{width:100%;background:#0f1117;border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:10px 12px;font-size:14px;font-family:inherit}
+textarea{min-height:90px;resize:vertical}
+input:focus,textarea:focus,select:focus{outline:none;border-color:var(--acc)}
+.err{color:var(--bad);font-size:12px;margin-top:4px}
+.sw{position:relative;width:42px;height:24px;flex-shrink:0}
+.sw input{opacity:0;width:0;height:0}
+.sw span{position:absolute;inset:0;background:#333;border-radius:12px;transition:.2s;cursor:pointer}
+.sw span:after{content:"";position:absolute;left:3px;top:3px;width:18px;height:18px;border-radius:9px;background:#fff;transition:.2s}
+.sw input:checked+span{background:var(--acc)}
+.sw input:checked+span:after{left:21px}
+.opt{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
+.opt:last-child{border:0}
+.opt .l{flex:1}.opt .l small{display:block;color:var(--sub);font-size:12px}
+.opt input[type=number]{width:110px}
+.bar{position:fixed;left:0;right:0;bottom:0;z-index:30;background:rgba(21,24,33,.97);border-top:1px solid var(--line);padding:10px 0 calc(10px + env(safe-area-inset-bottom))}
+.bar .wrap{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.bar .msg{flex:1;font-size:13px;color:var(--sub);min-width:140px}
+.bar .msg b{color:var(--acc)}
+@media(max-width:520px){body{padding-bottom:130px}.bar .wrap{gap:6px}.bar .msg{flex-basis:100%;min-width:0;font-size:12px;line-height:1.3}.bar .btn{flex:1;padding:10px 6px}.tabs button{padding:6px 10px}}
+.modal{position:fixed;inset:0;background:#000a;z-index:50;display:flex;align-items:flex-end;justify-content:center}
+@media(min-width:640px){.modal{align-items:center}}
+.mbox{background:#181b23;border-radius:20px 20px 0 0;width:100%;max-width:560px;max-height:90vh;overflow:auto;padding:20px}
+@media(min-width:640px){.mbox{border-radius:20px}}
+.mbox h3{font-size:18px;margin-bottom:6px}
+.mbox .foot{display:flex;gap:8px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap}
+.res{margin-top:10px;padding:10px 12px;border-radius:10px;font-size:13px}
+.res.ok{background:#3ecf8e1a;color:var(--ok)}.res.bad{background:#ff5a5a1a;color:var(--bad)}.res.warn{background:#e5b53a1a;color:var(--warn)}.res.info{background:var(--card2);color:var(--sub)}
+.diff{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;background:#0f1117;border-radius:10px;padding:10px;max-height:50vh;overflow:auto;white-space:pre-wrap;word-break:break-all}
+.diff .a{background:#3ecf8e22;color:#9ff0c9;display:block}.diff .d{background:#ff5a5a22;color:#ffb0b0;display:block}.diff .c{color:#666;display:block}
+.toast{position:fixed;left:50%;top:18px;transform:translateX(-50%);background:#222634;border:1px solid var(--line);padding:10px 16px;border-radius:12px;z-index:80;font-size:13px;max-width:90vw;box-shadow:0 8px 30px #0008}
+.empty{text-align:center;color:var(--sub);padding:30px 10px}
+.run{display:flex;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line);font-size:13px}
+.run:last-child{border:0}
+.preview{background:#ff5c8a1f;border-radius:12px;padding:10px 12px;font-size:12px;margin-top:10px}
+.help{display:inline-flex;width:16px;height:16px;border-radius:8px;background:var(--card2);color:var(--sub);font-size:11px;align-items:center;justify-content:center;cursor:help;margin-left:4px}
+.steps{counter-reset:s;margin:8px 0 0 0;list-style:none}
+.steps li{counter-increment:s;position:relative;padding-left:28px;margin:8px 0;font-size:13px;color:#c8cad4}
+.steps li:before{content:counter(s);position:absolute;left:0;top:1px;width:20px;height:20px;border-radius:10px;background:var(--acc);color:#fff;font-size:12px;display:flex;align-items:center;justify-content:center}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div class="top">
+      <div class="logo">影</div>
+      <h1>影视 · 管理后台<small id="repoLabel">未连接仓库</small></h1>
+      <button class="btn sm" onclick="reloadAll()" title="从 GitHub 重新读取配置">⟳ 刷新</button>
+      <button class="btn sm" onclick="openSetup()" title="仓库与令牌设置">⚙ 连接</button>
+    </div>
+    <nav class="tabs" id="tabs">
+      <button data-t="sources" class="on">播放源</button>
+      <button data-t="parses">解析接口</button>
+      <button data-t="player">播放器设置</button>
+      <button data-t="notice">公告</button>
+      <button data-t="release">版本与发布</button>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap" id="main">
+  <div class="empty" id="loading">正在加载…</div>
+
+  <!-- 播放源 -->
+  <section id="t-sources" class="hidden">
+    <div class="hint">💡 <b>播放源</b>就是苹果CMS（v10）的采集接口地址，例如 <code>https://your-api.example/api.php/provide/vod</code>。
+      这里添加的源会在下次发布时<b>内置到 App 里</b>。拖动卡片（或点 ↑↓）调整顺序，排在前面、带「默认」标记的源会作为 App 首页的默认源。</div>
+    <div class="row">
+      <button class="btn pri big" onclick="openAdd('sources')">＋ 添加播放源</button>
+      <button class="btn" onclick="openBulk('sources')">📋 批量添加</button>
+      <span class="sp"></span>
+      <button class="btn" onclick="runSpeedTest()" title="在 GitHub 服务器上测试所有源，不受浏览器跨域限制">⚡ 一键测速</button>
+    </div>
+    <div class="sec"><h2>播放源列表 <span class="tag" id="srcCount">0</span></h2><span class="meta" id="statusTime"></span></div>
+    <div id="srcList"></div>
+    <div id="srcRemovedWrap" class="hidden">
+      <div class="sec"><h2>已自动移除的源</h2><span class="meta">连续 3 次测速失败会被自动移除，可随时恢复</span></div>
+      <div id="srcRemoved"></div>
+    </div>
+  </section>
+
+  <!-- 解析接口 -->
+  <section id="t-parses" class="hidden">
+    <div class="hint">💡 <b>解析接口</b>用于播放「不是 m3u8 / mp4 直链」的地址。填写解析地址的<b>前缀</b>，App 会把播放地址拼在后面，例如
+      <code>https://your-parse.example/?url=</code>。<br>类型选「JSON」表示接口返回 <code>{"url":"真实地址"}</code>；选「网页嗅探」表示接口返回的是网页，App 会在后台打开网页自动抓取视频地址。</div>
+    <div class="row">
+      <button class="btn pri big" onclick="openAdd('parses')">＋ 添加解析接口</button>
+      <button class="btn" onclick="openBulk('parses')">📋 批量添加</button>
+      <span class="sp"></span>
+      <button class="btn" onclick="runSpeedTest()">⚡ 一键测速</button>
+    </div>
+    <div class="sec"><h2>解析接口列表 <span class="tag" id="parCount">0</span></h2></div>
+    <div id="parList"></div>
+    <div id="parRemovedWrap" class="hidden">
+      <div class="sec"><h2>已自动移除的解析</h2></div>
+      <div id="parRemoved"></div>
+    </div>
+  </section>
+
+  <!-- 播放器 -->
+  <section id="t-player" class="hidden">
+    <div class="hint">💡 这些是 App 的<b>默认设置</b>。用户在 App 里自己改过的设置会保留，不会被覆盖。</div>
+    <div class="card" id="playerForm"></div>
+  </section>
+
+  <!-- 公告 -->
+  <section id="t-notice" class="hidden">
+    <div class="hint">💡 公告会显示在 App 首页顶部，用户可以关闭。修改公告内容后，关闭过的用户会再次看到新公告。</div>
+    <div class="card">
+      <div class="opt"><div class="l">显示公告<small>关闭后 App 不显示任何公告</small></div><label class="sw"><input type="checkbox" id="nEnabled"><span></span></label></div>
+      <label class="f">标题</label><input type="text" id="nTitle" maxlength="20" placeholder="公告">
+      <label class="f">内容</label><textarea id="nText" maxlength="300" placeholder="例如：新增了 3 个播放源，欢迎体验～"></textarea>
+      <label class="f">点击跳转链接（可选）</label><input type="url" id="nLink" placeholder="https://">
+      <div class="preview" id="nPreview"></div>
+    </div>
+  </section>
+
+  <!-- 版本与发布 -->
+  <section id="t-release" class="hidden">
+    <div class="hint">💡 <b>发布流程</b>：改好配置 → 点底部「保存并编译发布」→ GitHub 自动编译 APK（约 5~10 分钟）→ 自动创建 Release 并更新 update.json → 已安装的 App 下次检查时弹出更新。</div>
+    <div class="card">
+      <div class="sec" style="margin-top:0"><h2>下一次发布</h2></div>
+      <label class="f">更新说明（每行一条，会显示在 App 的更新弹窗里）</label>
+      <textarea id="relLog" placeholder="新增播放源&#10;修复若干问题"></textarea>
+      <div class="opt"><div class="l">强制更新<small>开启后旧版本必须更新才能继续使用（慎用）</small></div><label class="sw"><input type="checkbox" id="relForce"><span></span></label></div>
+      <div class="row" style="margin-top:8px"><button class="btn" onclick="triggerBuild()">🚀 不改配置，直接编译发布</button></div>
+    </div>
+    <div class="card">
+      <div class="sec" style="margin-top:0"><h2>当前线上版本</h2><button class="btn sm" onclick="loadRelease()">⟳</button></div>
+      <div id="relInfo" class="meta">加载中…</div>
+    </div>
+    <div class="card">
+      <div class="sec" style="margin-top:0"><h2>最近的编译</h2><span class="meta" id="runsHint"></span></div>
+      <div id="runs" class="meta">加载中…</div>
+    </div>
+    <div class="card">
+      <div class="sec" style="margin-top:0"><h2>最近的测速</h2></div>
+      <div id="checkRuns" class="meta">加载中…</div>
+    </div>
+  </section>
+</main>
+
+<div class="bar">
+  <div class="wrap">
+    <div class="msg" id="dirtyMsg">配置已是最新</div>
+    <button class="btn" id="btnPreview" onclick="openDiff()" disabled>预览修改</button>
+    <button class="btn" id="btnSave" onclick="save(false)" disabled title="只保存到仓库，不发布新版本">仅保存</button>
+    <button class="btn pri" id="btnPublish" onclick="save(true)" disabled>保存并编译发布</button>
+  </div>
+</div>
+
+<div id="modalRoot"></div>
+
+<script>
+/* ================= 基础工具 ================= */
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const LS = { get: k => localStorage.getItem('vp_' + k) || '', set: (k, v) => localStorage.setItem('vp_' + k, v), del: k => localStorage.removeItem('vp_' + k) };
+let conf = { owner: LS.get('owner'), repo: LS.get('repo'), branch: LS.get('branch') || 'main', token: LS.get('token') };
+
+function toast(msg, ms = 2600) {
+  const t = document.createElement('div'); t.className = 'toast'; t.innerHTML = msg; document.body.appendChild(t);
+  setTimeout(() => t.remove(), ms);
+}
+function ago(sec) {
+  if (!sec) return '从未';
+  const d = Math.floor(Date.now() / 1000) - sec;
+  if (d < 60) return '刚刚'; if (d < 3600) return Math.floor(d / 60) + ' 分钟前';
+  if (d < 86400) return Math.floor(d / 3600) + ' 小时前'; return Math.floor(d / 86400) + ' 天前';
+}
+function hostOf(u) { try { return new URL(u).host } catch (e) { return '' } }
+function isUrl(u) { return /^https?:\/\/[^\s]+$/i.test(String(u || '').trim()) }
+function detectType(u) { return /\/at\/xml|\.xml(\?|$)/i.test(u) ? 'xml' : 'json' }
+function uid(p) { return p + Date.now().toString(36) + Math.random().toString(36).slice(2, 6) }
+const enc = s => { const b = new TextEncoder().encode(s); let bin = ''; for (let i = 0; i < b.length; i += 0x8000) bin += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000)); return btoa(bin) };
+const dec = b => new TextDecoder().decode(Uint8Array.from(atob(b.replace(/\s/g, '')), c => c.charCodeAt(0)));
+
+/* ================= GitHub API ================= */
+async function gh(path, opts = {}) {
+  const r = await fetch('https://api.github.com' + path, {
+    ...opts,
+    headers: { 'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'Authorization': 'Bearer ' + conf.token, ...(opts.body ? { 'Content-Type': 'application/json' } : {}) },
+  });
+  if (r.status === 204) return null;
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) { const e = new Error(j.message || ('HTTP ' + r.status)); e.status = r.status; throw e }
+  return j;
+}
+const R = () => `/repos/${conf.owner}/${conf.repo}`;
+async function getFile(path) {
+  try {
+    const j = await gh(`${R()}/contents/${path}?ref=${encodeURIComponent(conf.branch)}&t=${Date.now()}`);
+    return { text: dec(j.content), sha: j.sha };
+  } catch (e) { if (e.status === 404) return { text: null, sha: null }; throw e }
+}
+async function putFile(path, text, sha, message) {
+  const body = { message, content: enc(text), branch: conf.branch }; if (sha) body.sha = sha;
+  const j = await gh(`${R()}/contents/${path}`, { method: 'PUT', body: JSON.stringify(body) });
+  return j.content.sha;
+}
+async function dispatch(workflow, inputs) {
+  await gh(`${R()}/actions/workflows/${workflow}/dispatches`, { method: 'POST', body: JSON.stringify({ ref: conf.branch, inputs }) });
+}
+
+/* ================= 状态 ================= */
+const DEFAULT_CFG = { configVersion: 1, sources: [], parses: [], player: { bufferSeconds: 30, hwDecode: true, preloadNext: true, autoNext: true, skipIntro: 0, skipOutro: 0, defaultSpeed: 1.0, longPressSpeed: 3.0, directFirst: true, autoSpeedTest: true, downloadConcurrency: 8, maxDownloadTasks: 2 }, notice: { enabled: false, id: 'notice-1', title: '公告', text: '', link: '' } };
+let cfg = null, cfgSha = null, cfgOrig = '', cfgBase = '';
+let status = { sources: {}, parses: {} };
+let removed = [], removedSha = null, removedOrig = '[]';
+let editing = null; // {kind, idx}
+const pretty = o => JSON.stringify(o, null, 2) + '\n';
+
+function normalize(c) {
+  c = Object.assign(JSON.parse(JSON.stringify(DEFAULT_CFG)), c || {});
+  c.player = Object.assign({}, DEFAULT_CFG.player, c.player || {});
+  c.notice = Object.assign({}, DEFAULT_CFG.notice, c.notice || {});
+  c.sources = (c.sources || []).map(s => ({ key: s.key || uid('s'), name: s.name || '', api: s.api || '', type: s.type || detectType(s.api || ''), enabled: s.enabled !== false, order: s.order || 0, default: !!s.default }));
+  c.parses = (c.parses || []).map(p => ({ key: p.key || uid('p'), name: p.name || '', url: p.url || '', type: p.type || 'json', enabled: p.enabled !== false, order: p.order || 0 }));
+  return c;
+}
+function finalCfg() {
+  const c = JSON.parse(JSON.stringify(cfg));
+  c.sources.forEach((s, i) => { s.order = i + 1; if (!s.name) s.name = hostOf(s.api) });
+  c.parses.forEach((p, i) => { p.order = i + 1; if (!p.name) p.name = hostOf(p.url) });
+  if (c.sources.length && !c.sources.some(s => s.default)) c.sources[0].default = true;
+  return c;
+}
+function newCfgText() {
+  const c = finalCfg();
+  const oldBody = cfgOrig ? JSON.parse(cfgOrig) : null;
+  if (oldBody) { const a = { ...oldBody, configVersion: 0 }, b = { ...c, configVersion: 0 }; if (pretty(a) !== pretty(b)) c.configVersion = (oldBody.configVersion || 0) + 1; else c.configVersion = oldBody.configVersion || 1 }
+  return pretty(c);
+}
+function isDirty() { return newCfgText() !== cfgBase || pretty(removed) !== removedOrig }
+function refreshBar() {
+  const d = cfg && isDirty();
+  $('#dirtyMsg').innerHTML = d ? '<b>● 有未保存的修改</b>' : '配置已是最新';
+  $('#btnPreview').disabled = $('#btnSave').disabled = !d;
+  $('#btnPublish').disabled = !cfg;
+  $('#btnPublish').textContent = d ? '保存并编译发布' : '编译发布';
+}
+window.addEventListener('beforeunload', e => { if (cfg && isDirty()) { e.preventDefault(); e.returnValue = '' } });
+
+/* ================= 加载 ================= */
+async function reloadAll() {
+  if (!conf.token || !conf.owner || !conf.repo) {
+    $('#loading').innerHTML = '还没有连接 GitHub 仓库<br><br><button class="btn pri big" onclick="openSetup(true)">开始设置</button>';
+    openSetup(true); return
+  }
+  if (cfg && isDirty() && !confirm('有未保存的修改，刷新会丢失，确定吗？')) return;
+  $('#loading').classList.remove('hidden'); $('#loading').textContent = '正在从 GitHub 读取配置…';
+  $('#repoLabel').textContent = `${conf.owner}/${conf.repo} · ${conf.branch}`;
+  try {
+    const [c, st, rm] = await Promise.all([getFile('config.json'), getFile('status.json'), getFile('removed.json')]);
+    if (c.text === null) {
+      if (confirm('仓库里还没有 config.json，要创建一个默认配置吗？')) {
+        cfgSha = await putFile('config.json', pretty(DEFAULT_CFG), null, '初始化 config.json [skip ci]');
+        cfgOrig = pretty(DEFAULT_CFG); cfg = normalize(DEFAULT_CFG);
+      } else throw new Error('缺少 config.json');
+    } else { cfg = normalize(JSON.parse(c.text)); cfgSha = c.sha; cfgOrig = c.text.endsWith('\n') ? c.text : c.text + '\n' }
+    cfgBase = newCfgText(); // 以规范化后的文本作为“未修改”基准，避免格式差异被误判为修改
+    status = st.text ? JSON.parse(st.text) : { sources: {}, parses: {} };
+    removed = rm.text ? JSON.parse(rm.text) : []; removedSha = rm.sha; removedOrig = pretty(removed);
+    $('#loading').classList.add('hidden');
+    renderAll(); loadRelease();
+  } catch (e) {
+    $('#loading').innerHTML = `<div class="res bad">读取失败：${esc(e.message)}<br>请检查仓库名、分支和令牌权限。</div><br><button class="btn pri" onclick="openSetup()">重新设置</button>`;
+  }
+}
+
+/* ================= 渲染 ================= */
+function switchTab(t) {
+  document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.t === t));
+  document.querySelectorAll('main section').forEach(s => s.classList.add('hidden'));
+  $('#t-' + t).classList.remove('hidden');
+  if (t === 'release') loadRelease();
+}
+document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => switchTab(b.dataset.t));
+
+function renderAll() { renderList('sources'); renderList('parses'); renderPlayer(); renderNotice(); refreshBar(); if (document.querySelector('main section:not(.hidden)') == null) switchTab('sources') }
+
+function statusOf(kind, url) { return (status[kind] || {})[url] }
+function statusHtml(kind, url) {
+  const st = statusOf(kind, url);
+  if (!st) return { dot: '', text: '尚未测速（点「一键测速」）' };
+  const lat = st.ok ? `<span class="tag ${st.latency < 800 ? 'ok' : 'warn'}">${st.latency}ms</span>` : `<span class="tag bad">失败</span>`;
+  const fail = st.failCount ? ` · <span style="color:var(--bad)">连续失败 ${st.failCount} 次</span>` : '';
+  return { dot: st.ok ? 'ok' : 'bad', text: `${lat} · 上次检测 ${ago(st.lastCheck)}${fail}${st.error && !st.ok ? ' · ' + esc(st.error) : ''}` };
+}
+
+function renderList(kind) {
+  const list = cfg[kind], isSrc = kind === 'sources', field = isSrc ? 'api' : 'url';
+  const box = $(isSrc ? '#srcList' : '#parList');
+  $(isSrc ? '#srcCount' : '#parCount').textContent = list.length;
+  if (isSrc && status.updatedAt) $('#statusTime').textContent = '测速于 ' + ago(status.updatedAt);
+  if (!list.length) box.innerHTML = `<div class="empty">还没有${isSrc ? '播放源' : '解析接口'}，点上方「＋ 添加${isSrc ? '播放源' : '解析接口'}」开始吧</div>`;
+  else box.innerHTML = list.map((it, i) => {
+    const st = statusHtml(kind, it[field]);
+    if (editing && editing.kind === kind && editing.idx === i) return editCard(kind, it, i);
+    const typeTag = isSrc ? `<span class="tag">${it.type === 'xml' ? 'XML' : 'JSON'}</span>` : `<span class="tag">${it.type === 'webview' ? '网页嗅探' : 'JSON'}</span>`;
+    return `<div class="card ${it.enabled ? '' : 'off'}" draggable="true" data-kind="${kind}" data-i="${i}">
+      <div class="ch"><span class="handle" title="按住拖动排序">⋮⋮</span><span class="dot ${st.dot}"></span>
+        <span class="name">${esc(it.name || hostOf(it[field]) || '未命名')}</span>
+        ${isSrc && it.default ? '<span class="tag acc">默认</span>' : ''}${typeTag}
+        <label class="sw" title="${it.enabled ? '已启用' : '已停用'}"><input type="checkbox" ${it.enabled ? 'checked' : ''} onchange="toggleEnabled('${kind}',${i},this.checked)"><span></span></label></div>
+      <div class="url">${esc(it[field])}</div>
+      <div class="meta">${st.text}</div>
+      <div class="acts">
+        <button class="btn sm" onclick="move('${kind}',${i},-1)" ${i === 0 ? 'disabled' : ''}>↑</button>
+        <button class="btn sm" onclick="move('${kind}',${i},1)" ${i === list.length - 1 ? 'disabled' : ''}>↓</button>
+        ${isSrc && !it.default ? `<button class="btn sm" onclick="setDefault(${i})">设为默认</button>` : ''}
+        <button class="btn sm" onclick="testOne('${kind}',${i},this)">测试</button>
+        <button class="btn sm" onclick="startEdit('${kind}',${i})">编辑</button>
+        <button class="btn sm danger" onclick="del('${kind}',${i})">删除</button>
+      </div><div class="tres"></div></div>`;
+  }).join('');
+  bindDrag(box, kind);
+  // 已移除
+  const rm = removed.map((r, ri) => ({ r, ri })).filter(x => x.r.kind === kind);
+  $(isSrc ? '#srcRemovedWrap' : '#parRemovedWrap').classList.toggle('hidden', !rm.length);
+  $(isSrc ? '#srcRemoved' : '#parRemoved').innerHTML = rm.map(({ r, ri }) => `<div class="card off"><div class="ch"><span class="dot bad"></span><span class="name">${esc(r.item.name || hostOf(r.item[field]))}</span>
+     <button class="btn sm pri" onclick="restore(${ri})">恢复</button><button class="btn sm ghost" onclick="forget(${ri})">永久删除</button></div>
+     <div class="url">${esc(r.item[field])}</div><div class="meta">${esc(r.reason || '')} · 移除于 ${ago(r.removedAt)}</div></div>`).join('');
+}
+
+function editCard(kind, it, i) {
+  const isSrc = kind === 'sources', field = isSrc ? 'api' : 'url';
+  return `<div class="card" style="border-color:var(--acc)">
+    <label class="f">名称</label><input type="text" id="e_name" value="${esc(it.name)}" placeholder="${esc(hostOf(it[field]))}">
+    <label class="f">${isSrc ? '接口地址' : '解析地址前缀'}</label><input type="url" id="e_url" value="${esc(it[field])}">
+    <div class="err" id="e_err"></div>
+    <label class="f">类型</label>
+    <select id="e_type">${isSrc ? `<option value="json" ${it.type !== 'xml' ? 'selected' : ''}>JSON</option><option value="xml" ${it.type === 'xml' ? 'selected' : ''}>XML</option>`
+      : `<option value="json" ${it.type !== 'webview' ? 'selected' : ''}>JSON（返回 url 字段）</option><option value="webview" ${it.type === 'webview' ? 'selected' : ''}>网页嗅探</option>`}</select>
+    <div class="acts"><button class="btn pri sm" onclick="saveEdit('${kind}',${i})">完成</button><button class="btn sm" onclick="editing=null;renderList('${kind}')">取消</button></div></div>`;
+}
+function startEdit(kind, i) {
+  editing = { kind, idx: i }; renderList(kind);
+  // 改了地址时自动重新识别 JSON / XML
+  if (kind === 'sources') $('#e_url').oninput = e => { $('#e_type').value = detectType(e.target.value) };
+}
+function saveEdit(kind, i) {
+  const isSrc = kind === 'sources', field = isSrc ? 'api' : 'url';
+  const url = $('#e_url').value.trim(), name = $('#e_name').value.trim();
+  if (!isUrl(url)) { $('#e_err').textContent = '请填写以 http:// 或 https:// 开头的完整地址'; return }
+  if (cfg[kind].some((x, j) => j !== i && x[field] === url)) { $('#e_err').textContent = '这个地址已经存在了'; return }
+  Object.assign(cfg[kind][i], { name: name || hostOf(url), [field]: url, type: $('#e_type').value });
+  editing = null; renderList(kind); refreshBar();
+}
+function toggleEnabled(kind, i, v) { cfg[kind][i].enabled = v; renderList(kind); refreshBar() }
+function move(kind, i, d) { const l = cfg[kind], j = i + d; if (j < 0 || j >= l.length) return;[l[i], l[j]] = [l[j], l[i]]; renderList(kind); refreshBar() }
+function setDefault(i) { cfg.sources.forEach((s, j) => s.default = j === i); renderList('sources'); refreshBar(); toast('已设为默认源') }
+function del(kind, i) {
+  const it = cfg[kind][i];
+  if (!confirm(`确定删除「${it.name || hostOf(it.api || it.url)}」吗？\n（保存后生效，可在底部「预览修改」中确认）`)) return;
+  cfg[kind].splice(i, 1); renderList(kind); refreshBar();
+}
+function restore(ri) {
+  const r = removed[ri], field = r.kind === 'sources' ? 'api' : 'url';
+  if (!cfg[r.kind].some(x => x[field] === r.item[field])) cfg[r.kind].push(normalize({ [r.kind]: [r.item] })[r.kind][0]);
+  removed.splice(ri, 1); renderList(r.kind); refreshBar(); toast('已恢复，保存后生效');
+}
+function forget(ri) { if (!confirm('永久删除这条记录？')) return; const k = removed[ri].kind; removed.splice(ri, 1); renderList(k); refreshBar() }
+
+/* 拖动排序（桌面端；手机上用 ↑↓ 按钮） */
+function bindDrag(box, kind) {
+  let from = null;
+  box.querySelectorAll('.card[draggable]').forEach(el => {
+    el.addEventListener('dragstart', e => { from = +el.dataset.i; el.classList.add('drag'); e.dataTransfer.effectAllowed = 'move' });
+    el.addEventListener('dragend', () => el.classList.remove('drag'));
+    el.addEventListener('dragover', e => { e.preventDefault(); el.classList.add('over') });
+    el.addEventListener('dragleave', () => el.classList.remove('over'));
+    el.addEventListener('drop', e => {
+      e.preventDefault(); el.classList.remove('over');
+      const to = +el.dataset.i; if (from === null || from === to) return;
+      const l = cfg[kind]; const [m] = l.splice(from, 1); l.splice(to, 0, m); from = null; renderList(kind); refreshBar();
+    });
+  });
+}
+
+/* ================= 测试（浏览器内，受跨域限制） ================= */
+async function browserTest(kind, url) {
+  if (kind === 'parses') return { cls: 'info', msg: 'ℹ️ 解析接口无法在浏览器中可靠测试，请点「一键测速」在 GitHub 上测试。' };
+  if (location.protocol === 'https:' && url.startsWith('http:'))
+    return { cls: 'warn', msg: '⚠️ 这是 http 地址，浏览器出于安全限制无法从本页面直接测试（不代表源不可用）。保存后点「⚡ 一键测速」由 GitHub 服务器测试。' };
+  const ctrl = new AbortController(); const timer = setTimeout(() => ctrl.abort(), 10000);
+  const t0 = performance.now();
+  try {
+    const r = await fetch(url + (url.includes('?') ? '&' : '?') + 'ac=list', { signal: ctrl.signal });
+    const text = (await r.text()).replace(/^\uFEFF/, '').trim(); const ms = Math.round(performance.now() - t0);
+    if (!r.ok) return { cls: 'bad', msg: `❌ 失败：服务器返回 HTTP ${r.status}` };
+    let cats = 0, total = 0, fmt = 'JSON';
+    if (text.startsWith('<')) { fmt = 'XML'; const d = new DOMParser().parseFromString(text, 'text/xml'); cats = d.querySelectorAll('ty').length; total = +(d.querySelector('list')?.getAttribute('recordcount') || 0) }
+    else { const j = JSON.parse(text); cats = (j.class || []).length; total = +(j.total || 0) }
+    if (!cats && !total) return { cls: 'bad', msg: '❌ 失败：能访问，但没有读到分类或影片，地址可能不对（应以 /api.php/provide/vod 结尾）' };
+    return { cls: 'ok', msg: `✅ 成功：${fmt} 格式，${cats} 个分类${total ? '，共 ' + total + ' 部影片' : ''}，耗时 ${ms}ms`, type: fmt.toLowerCase() };
+  } catch (e) {
+    if (e.name === 'AbortError') return { cls: 'bad', msg: '❌ 失败：10 秒内没有响应' };
+    if (e instanceof SyntaxError) return { cls: 'bad', msg: '❌ 失败：返回的内容不是有效的 JSON / XML' };
+    return { cls: 'warn', msg: '⚠️ 浏览器无法直接访问（多半是跨域限制 CORS，不代表源不可用）。保存后点「⚡ 一键测速」由 GitHub 服务器测试。' };
+  } finally { clearTimeout(timer) }
+}
+async function testOne(kind, i, btn) {
+  const it = cfg[kind][i], out = btn.closest('.card').querySelector('.tres');
+  out.innerHTML = '<div class="res info">测试中…</div>';
+  const r = await browserTest(kind, it.api || it.url);
+  out.innerHTML = `<div class="res ${r.cls}">${r.msg}</div>`;
+}
+
+/* ================= 添加 / 批量添加 ================= */
+function modal(html, sticky) {
+  const root = $('#modalRoot');
+  root.innerHTML = `<div class="modal" ${sticky ? '' : 'onclick="if(event.target===this)closeModal()"'}><div class="mbox">${html}</div></div>`;
+  return root.firstChild;
+}
+function closeModal() { $('#modalRoot').innerHTML = '' }
+
+function openAdd(kind) {
+  const isSrc = kind === 'sources';
+  modal(`<h3>${isSrc ? '添加播放源' : '添加解析接口'}</h3>
+    <div class="meta">${isSrc ? '只需要填地址，名称可以留空（自动用域名）。JSON / XML 格式会自动识别。' : '填写解析地址前缀，播放地址会拼接在它后面。'}</div>
+    <label class="f">名称（可留空）</label><input type="text" id="a_name" placeholder="${isSrc ? '例如：资源站A' : '例如：解析1'}">
+    <label class="f">${isSrc ? '接口地址' : '解析地址前缀'}</label>
+    <input type="url" id="a_url" placeholder="${isSrc ? 'https://your-api.example/api.php/provide/vod' : 'https://your-parse.example/?url='}">
+    <div class="err" id="a_err"></div>
+    ${isSrc ? '<div class="meta" id="a_type"></div>' : `<label class="f">类型</label><select id="a_ptype"><option value="json">JSON（接口返回 url 字段）</option><option value="webview">网页嗅探（接口返回网页）</option></select>`}
+    <div id="a_res"></div>
+    <div class="foot">${isSrc ? '<button class="btn" id="a_test">测试</button>' : ''}<span class="sp"></span>
+      <button class="btn ghost" onclick="closeModal()">取消</button><button class="btn pri" id="a_ok">添加</button></div>`);
+  const u = $('#a_url'); u.focus();
+  u.oninput = () => { $('#a_err').textContent = ''; if (isSrc) $('#a_type').textContent = u.value ? '识别为：' + (detectType(u.value) === 'xml' ? 'XML 格式' : 'JSON 格式') : '' };
+  if (isSrc) $('#a_test').onclick = async () => {
+    const url = u.value.trim(); if (!isUrl(url)) { $('#a_err').textContent = '请先填写完整地址'; return }
+    $('#a_res').innerHTML = '<div class="res info">测试中…</div>';
+    const r = await browserTest(kind, url); $('#a_res').innerHTML = `<div class="res ${r.cls}">${r.msg}</div>`;
+  };
+  $('#a_ok').onclick = () => {
+    const url = u.value.trim(), name = $('#a_name').value.trim(), field = isSrc ? 'api' : 'url';
+    if (!isUrl(url)) { $('#a_err').textContent = '请填写以 http:// 或 https:// 开头的完整地址'; return }
+    if (cfg[kind].some(x => x[field] === url)) { $('#a_err').textContent = '这个地址已经添加过了'; return }
+    cfg[kind].push(isSrc ? { key: uid('s'), name: name || hostOf(url), api: url, type: detectType(url), enabled: true, order: 0, default: cfg.sources.length === 0 }
+      : { key: uid('p'), name: name || hostOf(url), url, type: $('#a_ptype').value, enabled: true, order: 0 });
+    closeModal(); renderList(kind); refreshBar(); toast('已添加，记得点底部「保存并编译发布」');
+  };
+}
+
+function openBulk(kind) {
+  const isSrc = kind === 'sources';
+  modal(`<h3>批量添加${isSrc ? '播放源' : '解析接口'}</h3>
+    <div class="meta">每行一个。可以只写地址，也可以写成「名称,地址」或「名称 地址」。重复的地址会自动跳过。</div>
+    <textarea id="b_text" style="min-height:180px;margin-top:10px" placeholder="${isSrc ? '资源站A,https://your-api.example/api.php/provide/vod\nhttps://another.example/api.php/provide/vod/at/xml' : '解析1,https://your-parse.example/?url='}"></textarea>
+    <div id="b_res"></div>
+    <div class="foot"><button class="btn ghost" onclick="closeModal()">取消</button><button class="btn pri" id="b_ok">添加</button></div>`);
+  $('#b_ok').onclick = () => {
+    const field = isSrc ? 'api' : 'url'; let add = 0, skip = 0, bad = 0;
+    $('#b_text').value.split(/\n/).map(l => l.trim()).filter(Boolean).forEach(line => {
+      const m = line.match(/https?:\/\/\S+/i); if (!m) { bad++; return }
+      const url = m[0].replace(/[,，]$/, ''); let name = line.replace(m[0], '').replace(/[,，$|\s]+/g, ' ').trim();
+      if (cfg[kind].some(x => x[field] === url)) { skip++; return }
+      cfg[kind].push(isSrc ? { key: uid('s'), name: name || hostOf(url), api: url, type: detectType(url), enabled: true, order: 0, default: cfg.sources.length === 0 }
+        : { key: uid('p'), name: name || hostOf(url), url, type: 'json', enabled: true, order: 0 });
+      add++;
+    });
+    renderList(kind); refreshBar();
+    $('#b_res').innerHTML = `<div class="res ${add ? 'ok' : 'warn'}">新增 ${add} 个${skip ? `，跳过重复 ${skip} 个` : ''}${bad ? `，${bad} 行没有找到地址` : ''}</div>`;
+    if (add && !skip && !bad) setTimeout(closeModal, 900);
+  };
+}
+
+/* ================= 播放器 / 公告 ================= */
+const PLAYER_FIELDS = [
+  ['bufferSeconds', 'num', '缓冲时长（秒）', '越大越不容易卡，但更耗流量。建议 20~60', 10, 120],
+  ['defaultSpeed', 'num', '默认倍速', '0.5 ~ 3', 0.5, 3, 0.25],
+  ['longPressSpeed', 'num', '长按快进倍速', '按住屏幕时的临时倍速', 1.5, 4, 0.5],
+  ['skipIntro', 'num', '默认跳过片头（秒）', '0 表示不跳过；用户可对每部剧单独设置', 0, 300],
+  ['skipOutro', 'num', '默认跳过片尾（秒）', '0 表示不跳过', 0, 300],
+  ['downloadConcurrency', 'num', '下载线程数', '每个下载任务同时下载的分片数，1~16', 1, 16],
+  ['maxDownloadTasks', 'num', '最大同时下载任务', '1~5', 1, 5],
+  ['hwDecode', 'bool', '硬件解码', '关闭后兼容性更好但更耗电'],
+  ['preloadNext', 'bool', '预加载下一集', '看到后面时提前缓冲下一集，切集更快'],
+  ['autoNext', 'bool', '自动播放下一集', ''],
+  ['directFirst', 'bool', '直链优先', 'm3u8 / mp4 地址直接播放，不走解析接口（推荐开启）'],
+  ['autoSpeedTest', 'bool', '自动选择最快线路', '打开详情页时自动测速并选最快的播放线路'],
+];
+function renderPlayer() {
+  $('#playerForm').innerHTML = PLAYER_FIELDS.map(([k, t, label, help, min, max, step]) => `<div class="opt"><div class="l">${label}<small>${help}</small></div>${t === 'bool'
+    ? `<label class="sw"><input type="checkbox" ${cfg.player[k] ? 'checked' : ''} onchange="cfg.player.${k}=this.checked;refreshBar()"><span></span></label>`
+    : `<input type="number" min="${min}" max="${max}" step="${step || 1}" value="${cfg.player[k]}" onchange="setNum('${k}',this,${min},${max})">`}</div>`).join('');
+}
+function setNum(k, el, min, max) {
+  let v = parseFloat(el.value); if (isNaN(v)) v = DEFAULT_CFG.player[k];
+  v = Math.min(max, Math.max(min, v)); el.value = v; cfg.player[k] = v; refreshBar();
+}
+function renderNotice() {
+  const n = cfg.notice;
+  $('#nEnabled').checked = !!n.enabled; $('#nTitle').value = n.title || ''; $('#nText').value = n.text || ''; $('#nLink').value = n.link || '';
+  const upd = () => {
+    n.enabled = $('#nEnabled').checked; n.title = $('#nTitle').value.trim() || '公告'; n.text = $('#nText').value.trim(); n.link = $('#nLink').value.trim();
+    $('#nPreview').innerHTML = n.enabled && n.text ? `📣 <b>${esc(n.title)}</b>：${esc(n.text)}${n.link ? ' ›' : ''}` : '<span style="color:var(--sub)">（App 中不显示公告）</span>';
+    refreshBar();
+  };
+  ['#nEnabled', '#nTitle', '#nText', '#nLink'].forEach(s => $(s).oninput = $(s).onchange = upd); upd();
+}
+
+/* ================= 校验 / 差异 / 保存 ================= */
+function validate() {
+  const errs = [];
+  const chk = (kind, field, label) => {
+    const seen = new Set();
+    cfg[kind].forEach((x, i) => {
+      if (!isUrl(x[field])) errs.push(`${label}第 ${i + 1} 个的地址无效`);
+      if (seen.has(x[field])) errs.push(`${label}「${x.name}」地址重复`); seen.add(x[field]);
+    });
+  };
+  chk('sources', 'api', '播放源'); chk('parses', 'url', '解析接口');
+  if (cfg.notice.enabled && !cfg.notice.text.trim()) errs.push('公告已开启但内容为空');
+  if (cfg.notice.link && !isUrl(cfg.notice.link)) errs.push('公告链接无效');
+  return errs;
+}
+function lineDiff(a, b) {
+  const A = a.split('\n'), B = b.split('\n'), n = A.length, m = B.length;
+  const dp = Array.from({ length: n + 1 }, () => new Int32Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) dp[i][j] = A[i] === B[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+  const out = []; let i = 0, j = 0;
+  while (i < n && j < m) { if (A[i] === B[j]) { out.push(['c', A[i]]); i++; j++ } else if (dp[i + 1][j] >= dp[i][j + 1]) out.push(['d', A[i++]]); else out.push(['a', B[j++]]) }
+  while (i < n) out.push(['d', A[i++]]); while (j < m) out.push(['a', B[j++]]);
+  // 只保留变化附近 2 行上下文
+  const keep = out.map((x, k) => x[0] !== 'c' || out.slice(Math.max(0, k - 2), k + 3).some(y => y[0] !== 'c'));
+  let html = '', skipped = false;
+  out.forEach((x, k) => { if (keep[k]) { html += `<span class="${x[0]}">${x[0] === 'a' ? '+ ' : x[0] === 'd' ? '- ' : '  '}${esc(x[1])}</span>`; skipped = false } else if (!skipped) { html += '<span class="c">  …</span>'; skipped = true } });
+  return html;
+}
+/* 用大白话总结修改内容（给新手看），详细 JSON 差异放在下面 */
+function summaryHtml() {
+  const old = cfgOrig ? normalize(JSON.parse(cfgOrig)) : normalize(DEFAULT_CFG), now = finalCfg(), out = [];
+  const nm = (x, f) => esc(x.name || hostOf(x[f]));
+  for (const [kind, f, label] of [['sources', 'api', '播放源'], ['parses', 'url', '解析接口']]) {
+    const o = new Map(old[kind].map(x => [x.key, x])), n = new Map(now[kind].map(x => [x.key, x]));
+    const added = now[kind].filter(x => !o.has(x.key)), gone = old[kind].filter(x => !n.has(x.key));
+    const changed = now[kind].filter(x => o.has(x.key) && ['name', f, 'type', 'enabled', 'default'].some(k => o.get(x.key)[k] !== x[k]));
+    const moved = now[kind].filter(x => o.has(x.key)).map(x => x.key).join() !== old[kind].filter(x => n.has(x.key)).map(x => x.key).join();
+    if (added.length) out.push(`➕ 新增${label} ${added.length} 个：${added.map(x => nm(x, f)).join('、')}`);
+    if (gone.length) out.push(`🗑 删除${label} ${gone.length} 个：${gone.map(x => nm(x, f)).join('、')}`);
+    if (changed.length) out.push(`✏️ 修改${label}：${changed.map(x => nm(x, f)).join('、')}`);
+    if (moved) out.push(`↕️ 调整了${label}顺序`);
+  }
+  const pc = PLAYER_FIELDS.filter(([k]) => old.player[k] !== now.player[k]).map(([k, , l]) => { const f = v => typeof v === 'boolean' ? (v ? '开' : '关') : v; return `${l} ${f(old.player[k])} → ${f(now.player[k])}` });
+  if (pc.length) out.push('⚙️ 播放器：' + esc(pc.join('；')));
+  if (JSON.stringify(old.notice) !== JSON.stringify(now.notice)) out.push(now.notice.enabled ? `📣 公告：${esc(now.notice.title)}：${esc(now.notice.text)}` : '📣 关闭公告');
+  if (pretty(removed) !== removedOrig) out.push('♻️ 更新了「已自动移除」列表');
+  return out.length ? `<div class="res info" style="color:var(--txt)">${out.join('<br>')}</div>` : '';
+}
+function diffHtml() {
+  let h = summaryHtml();
+  if (h) h += '<details style="margin-top:8px"><summary class="meta" style="cursor:pointer">查看详细改动（技术细节）</summary>';
+  const nc = newCfgText(); if (nc !== cfgBase) h += `<div class="meta" style="margin:8px 0 4px">config.json</div><div class="diff">${lineDiff(cfgOrig, nc)}</div>`;
+  const nr = pretty(removed); if (nr !== removedOrig) h += `<div class="meta" style="margin:8px 0 4px">removed.json</div><div class="diff">${lineDiff(removedOrig, nr)}</div>`;
+  if (h) h += '</details>';
+  return h || '<div class="empty">没有修改</div>';
+}
+function openDiff() {
+  modal(`<h3>预览修改</h3><div class="meta">确认无误后点「保存并编译发布」。</div>${diffHtml()}
+    <div class="foot"><button class="btn ghost" onclick="closeModal()">关闭</button><button class="btn" onclick="closeModal();save(false)">仅保存</button><button class="btn pri" onclick="closeModal();save(true)">保存并编译发布</button></div>`);
+}
+
+let saving = false;
+async function save(publish) {
+  if (saving) return;
+  const errs = validate();
+  if (errs.length) { modal(`<h3>还有问题需要修正</h3><div class="res bad">${errs.map(esc).join('<br>')}</div><div class="foot"><button class="btn pri" onclick="closeModal()">好的</button></div>`); return }
+  const dirty = isDirty();
+  if (!dirty && !publish) return;
+  if (publish && !confirm(dirty ? '保存修改并开始编译发布新版本？\n编译约需 5~10 分钟，完成后用户会收到更新提示。' : '配置没有修改，确定直接编译发布新版本吗？')) return;
+  saving = true; $('#btnPublish').disabled = $('#btnSave').disabled = true;
+  try {
+    const skip = ' [skip ci]'; // 由下方 API 触发编译，避免 push 再触发一次
+    if (newCfgText() !== cfgBase) {
+      const text = newCfgText();
+      cfgSha = await putFile('config.json', text, cfgSha, `后台更新配置 v${JSON.parse(text).configVersion}${skip}`);
+      cfgOrig = text; cfg = normalize(JSON.parse(text)); cfgBase = newCfgText();
+    }
+    if (pretty(removed) !== removedOrig) {
+      const t = pretty(removed);
+      removedSha = await putFile('removed.json', t, removedSha, `后台更新已移除列表${skip}`); removedOrig = t;
+    }
+    if (publish) {
+      await dispatch('build.yml', { release: 'true', changelog: $('#relLog').value.split('\n').map(s => s.trim()).filter(Boolean).join('|'), force: $('#relForce').checked ? 'true' : 'false' });
+      expectRun('build.yml'); toast('✅ 已保存，并已开始编译发布（约 5~10 分钟）', 4000); switchTab('release');
+    } else toast('✅ 已保存到仓库（未发布，下次发布时生效）');
+  } catch (e) {
+    if (e.status === 409 || e.status === 422) toast('❌ 保存冲突：仓库里的配置已被其他地方修改，请点「刷新」后重试', 5000);
+    else if (e.status === 403 || e.status === 404) toast('❌ 没有权限：请确认令牌有本仓库的 Contents 读写和 Actions 读写权限', 5000);
+    else toast('❌ 保存失败：' + esc(e.message), 5000);
+  } finally { saving = false; renderAll() }
+}
+
+/* ================= 发布 / 测速 状态 ================= */
+async function triggerBuild() { await save(true) }
+async function runSpeedTest() {
+  if (cfg && isDirty()) {
+    if (!confirm('你有未保存的修改。一键测速测试的是仓库里已保存的配置，\n要先保存修改再测速吗？\n（点「取消」则放弃本次测速）')) return;
+    await save(false);
+    if (isDirty()) return; // 保存失败
+  }
+  if (!confirm('在 GitHub 服务器上测试所有播放源和解析接口？\n约需 1~2 分钟。连续 3 次失败的会被自动移除，源列表变化时会自动编译发布新版本。')) return;
+  try { await dispatch('source-check.yml', { rebuild: 'true' }); expectRun('source-check.yml'); toast('⚡ 已开始测速（约 1~2 分钟），完成后会自动刷新结果', 4000); switchTab('release') }
+  catch (e) { toast('❌ 触发失败：' + esc(e.message) + '（令牌需要 Actions 读写权限）', 5000) }
+}
+const RUN_ICON = r => r.status !== 'completed' ? '⏳' : r.conclusion === 'success' ? '✅' : r.conclusion === 'skipped' ? '⏭' : '❌';
+const RUN_TEXT = r => r.status === 'queued' ? '排队中' : r.status === 'in_progress' ? '进行中' : r.conclusion === 'success' ? '成功' : r.conclusion === 'cancelled' ? '已取消' : r.conclusion === 'skipped' ? '已跳过' : '失败';
+let pollTimer = null;
+const expecting = {}; // workflow -> 触发时间（ms），在新运行出现在列表里之前持续轮询
+let seenCheckRunning = false;
+function expectRun(wf) { expecting[wf] = Date.now(); clearTimeout(pollTimer); pollTimer = setTimeout(() => loadRuns(), 3000) }
+async function loadRuns() {
+  try {
+    const [b, c] = await Promise.all([
+      gh(`${R()}/actions/workflows/build.yml/runs?per_page=6`).catch(() => ({ workflow_runs: [] })),
+      gh(`${R()}/actions/workflows/source-check.yml/runs?per_page=4`).catch(() => ({ workflow_runs: [] })),
+    ]);
+    const fmt = list => list.length ? list.map(r => `<div class="run"><span>${RUN_ICON(r)}</span><div class="sp">#${r.run_number} ${esc(r.display_title || r.name)}<br><span class="meta">${RUN_TEXT(r)} · ${ago(Math.floor(new Date(r.created_at) / 1000))} · ${esc(r.event)}</span></div><a href="${r.html_url}" target="_blank" class="btn sm">查看</a></div>`).join('') : '<div class="meta">暂无记录</div>';
+    $('#runs').innerHTML = fmt(b.workflow_runs); $('#checkRuns').innerHTML = fmt(c.workflow_runs);
+    // 刚触发的任务可能要过几秒才出现在列表里：出现之前继续等（最多 2 分钟）
+    for (const [wf, t] of Object.entries(expecting)) {
+      const list = wf === 'build.yml' ? b.workflow_runs : c.workflow_runs;
+      if (list.some(r => new Date(r.created_at).getTime() >= t - 60000) || Date.now() - t > 120000) delete expecting[wf];
+    }
+    const running = [...b.workflow_runs, ...c.workflow_runs].some(r => r.status !== 'completed');
+    const checkRunning = c.workflow_runs.some(r => r.status !== 'completed');
+    if (seenCheckRunning && !checkRunning) {
+      // 测速刚结束：配置可能被自动排序 / 移除，没有未保存修改时自动重新读取
+      if (cfg && !isDirty()) { toast('⚡ 测速完成，已更新测速结果'); reloadAll() }
+      else toast('⚡ 测速完成。你有未保存的修改，保存前请先点「⟳ 刷新」获取最新测速结果', 5000);
+    }
+    seenCheckRunning = checkRunning;
+    const waiting = Object.keys(expecting).length > 0;
+    $('#runsHint').textContent = running ? '有任务进行中，自动刷新…' : waiting ? '已触发，等待 GitHub 开始运行…' : '';
+    clearTimeout(pollTimer); if (running || waiting) pollTimer = setTimeout(() => { loadRuns(); loadRelease(true) }, running ? 10000 : 4000);
+  } catch (e) { $('#runs').textContent = '读取失败：' + e.message }
+}
+async function loadRelease(quiet) {
+  if (!conf.token) return;
+  try {
+    const [u, rel] = await Promise.all([getFile('update.json').catch(() => ({ text: null })), gh(`${R()}/releases/latest`).catch(() => null)]);
+    let h = '';
+    if (u.text) { const j = JSON.parse(u.text); h += `<div>update.json：<b>v${esc(j.versionName)}</b>（versionCode ${j.versionCode}）${j.size ? ' · ' + esc(j.size) : ''}${j.force ? ' · <span class="tag bad">强制更新</span>' : ''}</div>` }
+    else h += '<div>仓库中还没有 update.json（首次发布后自动生成）</div>';
+    if (rel) {
+      const apk = (rel.assets || []).find(a => a.name.endsWith('.apk'));
+      h += `<div style="margin-top:6px">最新 Release：<b>${esc(rel.name || rel.tag_name)}</b> · ${ago(Math.floor(new Date(rel.published_at) / 1000))}</div>`;
+      if (apk) h += `<div class="row" style="margin-top:10px"><a class="btn pri" href="${apk.browser_download_url}" target="_blank">⬇ 下载 APK（${(apk.size / 1048576).toFixed(1)} MB）</a><a class="btn" href="${rel.html_url}" target="_blank">Release 页面</a></div>`;
+    } else h += '<div style="margin-top:6px">还没有发布过 Release</div>';
+    $('#relInfo').innerHTML = h;
+    if (!quiet) loadRuns();
+  } catch (e) { $('#relInfo').textContent = '读取失败：' + e.message }
+}
+
+/* ================= 首次设置向导 ================= */
+function openSetup(first) {
+  modal(`<h3>${first ? '👋 欢迎，先连接你的 GitHub 仓库' : '仓库与令牌设置'}</h3>
+    <ol class="steps">
+      <li>填写你的 GitHub 用户名和仓库名（就是存放 App 源码的那个仓库）。</li>
+      <li>创建一个<b>细粒度令牌</b>：<a href="https://github.com/settings/personal-access-tokens/new" target="_blank">点这里创建</a>，
+        「Repository access」选 <b>Only select repositories</b> 并只勾选这个仓库；「Permissions」里把 <b>Contents</b> 和 <b>Actions</b> 都设为 <b>Read and write</b>。</li>
+      <li>把生成的令牌粘贴到下面。令牌只保存在<b>当前浏览器</b>里，不会上传到任何地方。</li>
+    </ol>
+    <label class="f">GitHub 用户名 / 组织（也可以直接粘贴仓库网址）</label><input type="text" id="s_owner" value="${esc(conf.owner)}" placeholder="例如 zhangsan 或 https://github.com/zhangsan/VideoPlayer">
+    <label class="f">仓库名</label><input type="text" id="s_repo" value="${esc(conf.repo)}" placeholder="例如 VideoPlayer">
+    <label class="f">分支</label><input type="text" id="s_branch" value="${esc(conf.branch || 'main')}">
+    <label class="f">令牌（github_pat_ 开头）</label><input type="password" id="s_token" value="${esc(conf.token)}" placeholder="github_pat_…" autocomplete="off">
+    <div id="s_res"></div>
+    <div class="foot">${conf.token ? '<button class="btn danger" onclick="logout()">清除令牌</button>' : ''}<span class="sp"></span>
+      ${first ? '' : '<button class="btn ghost" onclick="closeModal()">取消</button>'}<button class="btn pri" id="s_ok">验证并连接</button></div>`, first);
+  const guess = location.hostname.endsWith('.github.io') ? location.hostname.split('.')[0] : '';
+  if (!conf.owner && guess) $('#s_owner').value = guess;
+  if (!conf.repo && guess) { const p = location.pathname.split('/').filter(Boolean); if (p[0] && p[0] !== 'admin') $('#s_repo').value = p[0] }
+  $('#s_ok').onclick = async () => {
+    const c = { owner: $('#s_owner').value.trim(), repo: $('#s_repo').value.trim(), branch: $('#s_branch').value.trim() || 'main', token: $('#s_token').value.replace(/\s/g, '') };
+    // 新手常把整个仓库网址或「用户名/仓库名」粘贴进来：自动拆分
+    const m = (c.owner + '/' + c.repo).match(/(?:github\.com\/)?([\w.-]+)\/([\w.-]+?)(?:\.git)?(?:\/.*)?$/i);
+    if ((c.owner.includes('/') || c.repo.includes('/')) && m) { c.owner = m[1]; c.repo = m[2]; $('#s_owner').value = c.owner; $('#s_repo').value = c.repo }
+    if (!c.owner || !c.repo || !c.token) { $('#s_res').innerHTML = '<div class="res bad">请把四项都填写完整</div>'; return }
+    $('#s_res').innerHTML = '<div class="res info">验证中…</div>';
+    const old = conf; conf = c;
+    try {
+      const repo = await gh(`/repos/${c.owner}/${c.repo}`);
+      if (repo.permissions && !repo.permissions.push) throw new Error('令牌没有这个仓库的写入权限');
+      await gh(`/repos/${c.owner}/${c.repo}/branches/${encodeURIComponent(c.branch)}`);
+      Object.entries(c).forEach(([k, v]) => LS.set(k, v));
+      closeModal(); toast('✅ 已连接 ' + esc(c.owner + '/' + c.repo)); cfg = null; reloadAll();
+    } catch (e) {
+      conf = old;
+      $('#s_res').innerHTML = `<div class="res bad">连接失败：${esc(e.status === 401 ? '令牌无效或已过期' : e.status === 404 ? '找不到仓库或分支（或令牌没有访问这个仓库的权限）' : e.message)}</div>`;
+    }
+  };
+}
+function logout() { ['token'].forEach(LS.del); conf.token = ''; closeModal(); location.reload() }
+
+/* ================= 启动 ================= */
+switchTab('sources');
+reloadAll();
+</script>
+</body>
+</html>

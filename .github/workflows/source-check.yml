@@ -1,0 +1,59 @@
+name: 播放源测速与清理
+
+on:
+  schedule:
+    - cron: '17 */6 * * *'   # 每 6 小时
+  workflow_dispatch:
+    inputs:
+      rebuild:
+        description: '源列表有变化时自动编译发布新版本'
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: source-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 并发测速所有播放源与解析接口
+        id: check
+        run: python3 scripts/check_sources.py
+
+      - name: 提交结果
+        id: commit
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add status.json removed.json config.json
+          if git diff --cached --quiet; then echo "无变化"; echo "pushed=false" >> $GITHUB_OUTPUT; exit 0; fi
+          git commit -m "chore: 播放源测速结果 [skip ci]"
+          # 编译任务可能刚把 update.json 提交回来，推送前先 rebase，失败重试
+          for i in 1 2 3; do
+            git pull --rebase origin "${{ github.event.repository.default_branch }}" && git push && break
+            sleep 5
+          done
+          echo "pushed=true" >> $GITHUB_OUTPUT
+
+      - name: 源列表有变化 → 触发编译发布
+        if: steps.check.outputs.config_changed == 'true' && steps.commit.outputs.pushed == 'true' && (github.event_name == 'schedule' || inputs.rebuild)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # 通过环境变量传递，避免源名称里的引号 / $() 被当成 shell 代码执行
+          SUMMARY: ${{ steps.check.outputs.summary }}
+          BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          gh workflow run build.yml --ref "$BRANCH" -f release=true -f changelog="$SUMMARY"
