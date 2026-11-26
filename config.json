@@ -1,6 +1,25 @@
 {
-  "configVersion": 1,
-  "sources": [],
+  "configVersion": 2,
+  "sources": [
+    {
+      "key": "smwxmr4q6iibd",
+      "name": "大地",
+      "api": "https://dadiapi.com/api.php/provide/vod/",
+      "type": "json",
+      "enabled": true,
+      "order": 1,
+      "default": true
+    },
+    {
+      "key": "smwxmrt4rexuf",
+      "name": "naixx",
+      "api": "https://naixxzy.com/api.php/provide/vod/?ac=list",
+      "type": "json",
+      "enabled": true,
+      "order": 2,
+      "default": false
+    }
+  ],
   "parses": [],
   "player": {
     "bufferSeconds": 30,
@@ -9,8 +28,8 @@
     "autoNext": true,
     "skipIntro": 0,
     "skipOutro": 0,
-    "defaultSpeed": 1.0,
-    "longPressSpeed": 3.0,
+    "defaultSpeed": 1,
+    "longPressSpeed": 3,
     "directFirst": true,
     "autoSpeedTest": true,
     "downloadConcurrency": 8,
