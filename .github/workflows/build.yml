@@ -55,7 +55,7 @@ jobs:
         run: |
           RUN=${{ github.run_number }}
           VERSION_CODE=$((100 + RUN))
-          BASE=$(git tag -l 'v[0-9]*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 | sed 's/^v//')
+          BASE=$(git tag -l 'v[0-9]*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 | sed 's/^v//' || true)
           [ -z "$BASE" ] && BASE="1.0.0"
           RELEASE=false
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
@@ -140,7 +140,7 @@ jobs:
           export SIZE=$(python3 -c "import os;print('%.1f MB'%(os.path.getsize('$APK')/1048576))")
           if [ -z "$INPUT_CHANGELOG" ]; then
             if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-              INPUT_CHANGELOG=$(git tag -l --format='%(contents:subject)' "$GITHUB_REF_NAME")
+              INPUT_CHANGELOG=$(git tag -l --format='%(contents:subject)' "$GITHUB_REF_NAME" || true)
             fi
             [ -z "$INPUT_CHANGELOG" ] && INPUT_CHANGELOG=$(git log -1 --pretty=%s)
           fi
