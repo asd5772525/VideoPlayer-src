@@ -1,5 +1,5 @@
 {
-  "configVersion": 2,
+  "configVersion": 3,
   "sources": [
     {
       "key": "smwxmr4q6iibd",
@@ -39,7 +39,7 @@
     "enabled": false,
     "id": "notice-1",
     "title": "公告",
-    "text": "",
+    "text": "仅做测试使用",
     "link": ""
   }
 }
