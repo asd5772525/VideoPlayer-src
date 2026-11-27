@@ -1,12 +1,33 @@
 {
-  "versionCode": 1,
-  "versionName": "1.0.0",
-  "apkUrl": "",
-  "size": "",
+  "versionCode": 105,
+  "versionName": "1.0.0-r5",
+  "apkUrl": "https://github.com/asd5772525/VideoPlayer-src/releases/download/v1.0.0-r5/VideoPlayer-v1.0.0-r5-universal.apk",
+  "size": "3.0 MB",
   "changelog": [
-    "首次发布后由 GitHub Actions 自动更新此文件"
+    "up"
   ],
   "force": false,
-  "md5": "",
-  "apks": {}
+  "md5": "1b5a6eb757a2b88588792099e5e263be",
+  "apks": {
+    "arm64-v8a": {
+      "url": "https://github.com/asd5772525/VideoPlayer-src/releases/download/v1.0.0-r5/VideoPlayer-v1.0.0-r5-arm64-v8a.apk",
+      "md5": "bf011b090705c731e160a30726fb9ab3",
+      "size": "2.9 MB"
+    },
+    "armeabi-v7a": {
+      "url": "https://github.com/asd5772525/VideoPlayer-src/releases/download/v1.0.0-r5/VideoPlayer-v1.0.0-r5-armeabi-v7a.apk",
+      "md5": "d905fe22812337f54145a96d5244aa1e",
+      "size": "2.9 MB"
+    },
+    "universal": {
+      "url": "https://github.com/asd5772525/VideoPlayer-src/releases/download/v1.0.0-r5/VideoPlayer-v1.0.0-r5-universal.apk",
+      "md5": "1b5a6eb757a2b88588792099e5e263be",
+      "size": "3.0 MB"
+    },
+    "x86_64": {
+      "url": "https://github.com/asd5772525/VideoPlayer-src/releases/download/v1.0.0-r5/VideoPlayer-v1.0.0-r5-x86_64.apk",
+      "md5": "23afbe08513ad3f7bcd1e31fc350d272",
+      "size": "2.9 MB"
+    }
+  }
 }
