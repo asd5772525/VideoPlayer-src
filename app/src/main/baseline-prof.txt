@@ -1,0 +1,51 @@
+# 手写的 Baseline Profile（不是在真机上用 Macrobenchmark 生成的）。
+# AGP 在打 release 包时把它编译进 assets/dexopt/baseline.prof，androidx.profileinstaller 在安装后让 ART 预编译这些方法，
+# 目的是让冷启动 → 首页 → 详情 → 播放这条路径少走解释执行。规则写得比较宽（按包通配），代价是安装后多占一点空间。
+# 规则格式：H=热点 S=启动 P=启动后；L 开头的是要预加载的类。
+# Compose / Media3 / Room 等库自带各自的 baseline profile，AGP 会自动合并，这里只覆盖本 App 的代码。
+
+# ---- 启动：Application / 依赖容器 / 网络 / 设置 / 配置 ----
+HSPLcom/vplayer/app/App;->**(**)**
+Lcom/vplayer/app/App;
+HSPLcom/vplayer/app/AppContainer;->**(**)**
+Lcom/vplayer/app/AppContainer;
+HSPLcom/vplayer/app/MainActivity;->**(**)**
+Lcom/vplayer/app/MainActivity;
+HSPLcom/vplayer/app/MainActivityKt**->**(**)**
+HSPLcom/vplayer/app/data/net/**->**(**)**
+HSPLcom/vplayer/app/data/prefs/**->**(**)**
+HSPLcom/vplayer/app/data/config/**->**(**)**
+HSPLcom/vplayer/app/util/**->**(**)**
+HSPLcom/vplayer/app/ui/theme/**->**(**)**
+
+# ---- 首页：导航、源列表、苹果CMS 解析、缓存、分页 ----
+HSPLcom/vplayer/app/ui/nav/**->**(**)**
+HSPLcom/vplayer/app/ui/home/**->**(**)**
+HSPLcom/vplayer/app/ui/components/**->**(**)**
+HSPLcom/vplayer/app/data/cms/**->**(**)**
+HSPLcom/vplayer/app/data/model/**->**(**)**
+HSPLcom/vplayer/app/data/db/**->**(**)**
+Lcom/vplayer/app/data/model/Vod;
+Lcom/vplayer/app/data/model/Source;
+Lcom/vplayer/app/data/cms/SourceRepository;
+Lcom/vplayer/app/data/cms/CmsRepository;
+
+# ---- 详情页：线路测速、播放器预热、地址解析 ----
+HSPLcom/vplayer/app/ui/detail/**->**(**)**
+HSPLcom/vplayer/app/player/UrlResolver**->**(**)**
+HSPLcom/vplayer/app/player/ParseOrder;->**(**)**
+HSPLcom/vplayer/app/player/JsonPick;->**(**)**
+HSPLcom/vplayer/app/player/AdRules;->**(**)**
+HSPLcom/vplayer/app/player/SpeedTester**->**(**)**
+HSPLcom/vplayer/app/player/PlayerManager**->**(**)**
+Lcom/vplayer/app/player/PlayerManager;
+
+# ---- 播放页：Activity、ViewModel、手势、去广告 ----
+HSPLcom/vplayer/app/ui/player/**->**(**)**
+HSPLcom/vplayer/app/player/HoldSeek;->**(**)**
+HSPLcom/vplayer/app/player/TapZone**->**(**)**
+HSPLcom/vplayer/app/player/Failover;->**(**)**
+HSPLcom/vplayer/app/player/ad/**->**(**)**
+Lcom/vplayer/app/ui/player/PlayerActivity;
+Lcom/vplayer/app/ui/player/PlayerViewModel;
+Lcom/vplayer/app/player/ad/AdFilter;

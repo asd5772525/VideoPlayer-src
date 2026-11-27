@@ -14,7 +14,10 @@ import com.vplayer.app.R
 import com.vplayer.app.data.db.DownloadEntity
 import com.vplayer.app.data.net.Http
 import com.vplayer.app.data.net.await
+import com.vplayer.app.player.AdRules
 import com.vplayer.app.player.PlayerManager
+import com.vplayer.app.player.Resolved
+import com.vplayer.app.util.AppLog
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
@@ -93,13 +96,18 @@ class DownloadWorker(context: Context, params: WorkerParameters) : CoroutineWork
         live[t.id] = l
         try {
             dao.setStatus(t.id, DownloadEntity.STATUS_RUNNING)
-            val url = t.resolvedUrl.ifBlank { container.resolver.resolve(t.originUrl) }
+            val src = container.sources.byId(t.sourceId)
+            val resolved = if (t.resolvedUrl.isNotBlank()) container.resolver.cachedResolved(t.originUrl)?.takeIf { it.url == t.resolvedUrl }
+                ?: Resolved(t.resolvedUrl)
+            else container.resolver.resolveFull(t.originUrl, src, null)
+            val url = resolved.url
+            val adRule = AdRules.effective(src?.adFilter, container.settings.current().adFilter)
             val kind = t.kind.ifBlank { detectKind(url) }
             dao.get(t.id)?.let { dao.update(it.copy(resolvedUrl = url, kind = kind, status = DownloadEntity.STATUS_RUNNING)) }
             val dir = container.downloads.dirFor(t.id)
             val threads = container.settings.current().downloadThreads
             val file = if (kind == "m3u8") {
-                M3u8Downloader(dir, threads) { d, total, b -> l.segDone = d; l.segTotal = total; l.bytes = b }.download(url)
+                M3u8Downloader(dir, threads, resolved.headers, adRule) { d, total, b -> l.segDone = d; l.segTotal = total; l.bytes = b }.download(url)
             } else {
                 Mp4Downloader(dir, threads) { b, total -> l.bytes = b; l.total = total }.download(url)
             }
@@ -116,6 +124,7 @@ class DownloadWorker(context: Context, params: WorkerParameters) : CoroutineWork
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            AppLog.e("download", "下载失败 ${t.name} ${t.epName}", e)
             dao.setStatus(t.id, DownloadEntity.STATUS_FAILED, e.message ?: "下载失败")
         } finally {
             live.remove(t.id)

@@ -1,5 +1,6 @@
 package com.vplayer.app.data.model
 
+import com.vplayer.app.data.config.AdFilterCfg
 import kotlinx.serialization.Serializable
 
 /** 统一的数据源描述（内置源来自打包进 APK 的 config.json，本地源来自 Room） */
@@ -12,6 +13,9 @@ data class Source(
     val enabled: Boolean = true,
     val isDefault: Boolean = false,
     val order: Int = 0,
+    val parseKeys: List<String> = emptyList(),            // 绑定的解析 key（仅内置源）
+    val lineParses: Map<String, List<String>> = emptyMap(), // 线路名 → 解析 key
+    val adFilter: AdFilterCfg? = null,
 ) {
     val isXml: Boolean get() = type.equals("xml", true) || api.contains("/at/xml")
 }
@@ -24,6 +28,10 @@ data class ParseApi(
     val builtIn: Boolean,
     val enabled: Boolean = true,
     val order: Int = 0,
+    val key: String = "",                       // config.json 中的 key（绑定用）
+    val headers: Map<String, String> = emptyMap(),
+    val timeoutSec: Int = 0,
+    val jsonPath: String = "",
 )
 
 @Serializable
@@ -94,6 +102,11 @@ data class UpdateInfo(
     val changelog: List<String> = emptyList(),
     val force: Boolean = false,
     val md5: String = "",
+    /** 按 ABI 分包：{"arm64-v8a": {url, md5, size}, ..., "universal": {...}}；旧版 App 只读顶层字段 */
+    val apks: Map<String, ApkVariant> = emptyMap(),
 )
+
+@Serializable
+data class ApkVariant(val url: String = "", val md5: String = "", val size: String = "")
 
 fun vodKey(sourceId: String, vodId: String) = "$sourceId|$vodId"

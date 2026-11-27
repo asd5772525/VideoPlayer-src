@@ -28,6 +28,11 @@ import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
 import com.vplayer.app.data.net.DEFAULT_UA
 import com.vplayer.app.data.net.Http
 import com.vplayer.app.data.prefs.SettingsRepository
+import com.vplayer.app.player.ad.AdFilterResult
+import com.vplayer.app.player.ad.AdFilteringParserFactory
+import com.vplayer.app.player.ad.AdRule
+import com.vplayer.app.util.AppLog
+import androidx.media3.exoplayer.hls.playlist.DefaultHlsPlaylistParserFactory
 import java.io.File
 
 /**
@@ -79,8 +84,14 @@ class PlayerManager(private val context: Context, private val settings: Settings
         OkHttpDataSource.Factory(Http.client).setUserAgent(DEFAULT_UA)
     }
 
-    private fun dataSourceFactory(local: Boolean): DataSource.Factory {
-        val upstream = DefaultDataSource.Factory(context, httpFactory)
+    private fun dataSourceFactory(local: Boolean, headers: Map<String, String> = emptyMap()): DataSource.Factory {
+        val http = if (headers.isEmpty()) httpFactory else {
+            val ua = headers.entries.firstOrNull { it.key.equals("User-Agent", true) }?.value
+            OkHttpDataSource.Factory(Http.client)
+                .setUserAgent(ua?.takeIf { it.isNotBlank() } ?: DEFAULT_UA)
+                .setDefaultRequestProperties(headers.filterKeys { !it.equals("User-Agent", true) && it.isNotBlank() })
+        }
+        val upstream = DefaultDataSource.Factory(context, http)
         if (local) return upstream
         return CacheDataSource.Factory()
             .setCache(cache(context, settings.state.value.cacheSizeMb))
@@ -88,15 +99,31 @@ class PlayerManager(private val context: Context, private val settings: Settings
             .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
     }
 
-    fun buildMediaSource(url: String, mediaId: String, forceHls: Boolean = false): MediaSource {
+    /**
+     * @param headers 解析接口配置的请求头（Referer / User-Agent），播放解析出的地址时同样带上
+     * @param adRule 非空时对 HLS media playlist 去插播广告
+     */
+    fun buildMediaSource(
+        url: String,
+        mediaId: String,
+        forceHls: Boolean = false,
+        headers: Map<String, String> = emptyMap(),
+        adRule: AdRule? = null,
+    ): MediaSource {
         val local = url.startsWith("/") || url.startsWith("file:")
         val uri = if (url.startsWith("/")) Uri.fromFile(File(url)) else Uri.parse(url)
         val hls = forceHls || isHlsUrl(url)
         val item = MediaItem.Builder().setUri(uri).setMediaId(mediaId)
             .apply { if (hls) setMimeType(MimeTypes.APPLICATION_M3U8) }
             .build()
-        val dsf = dataSourceFactory(local)
-        return if (hls) HlsMediaSource.Factory(dsf).setAllowChunklessPreparation(true).createMediaSource(item)
+        val dsf = dataSourceFactory(local, headers)
+        return if (hls) HlsMediaSource.Factory(dsf).setAllowChunklessPreparation(true)
+            .apply {
+                if (adRule != null) setPlaylistParserFactory(
+                    AdFilteringParserFactory(DefaultHlsPlaylistParserFactory(), adRule) { r -> onAdFiltered(mediaId, r) }
+                )
+            }
+            .createMediaSource(item)
         else ProgressiveMediaSource.Factory(dsf).createMediaSource(item)
     }
 
@@ -131,13 +158,22 @@ class PlayerManager(private val context: Context, private val settings: Settings
         return p
     }
 
+    /** 去广告结果回调（播放页订阅后弹提示）；在加载线程调用 */
+    @Volatile
+    var adListener: ((mediaId: String, AdFilterResult) -> Unit)? = null
+
+    private fun onAdFiltered(mediaId: String, r: AdFilterResult) {
+        AppLog.i("ad", "已去除 ${r.removedSegments} 个插播分片（${"%.1f".format(r.removedSeconds)}s / 共 ${"%.0f".format(r.totalSeconds)}s）$mediaId")
+        adListener?.invoke(mediaId, r)
+    }
+
     /** 预热：提前 prepare 但不播放，进入播放页即可秒开 */
-    fun prewarm(key: String, url: String, startMs: Long) {
+    fun prewarm(key: String, url: String, startMs: Long, headers: Map<String, String> = emptyMap(), adRule: AdRule? = null) {
         if (inUse) return
         if (preparedKey == key && preparedUrl == url) return
         val p = obtain()
         p.playWhenReady = false
-        p.setMediaSource(buildMediaSource(url, key), startMs.coerceAtLeast(0))
+        p.setMediaSource(buildMediaSource(url, key, headers = headers, adRule = adRule), startMs.coerceAtLeast(0))
         p.prepare()
         preparedKey = key
         preparedUrl = url

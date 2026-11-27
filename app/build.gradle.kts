@@ -55,6 +55,23 @@ android {
         }
     }
 
+    // 按 CPU 架构分包 + 通用包（universal）。本项目自己的代码没有 .so，只有依赖带的两个很小的 native 库，
+    // 所以分包只省几十 KB；保留它主要是为了以后引入 native 解码库时不用再改发布流程。
+    // 本地调试想只出一个包：./gradlew assembleDebug -Pvp.abiSplit=false
+    splits {
+        abi {
+            isEnable = prop("vp.abiSplit") != "false"
+            reset()
+            include("arm64-v8a", "armeabi-v7a", "x86_64")
+            isUniversalApk = true
+        }
+    }
+
+    // CI 正式包跳过 lintVital（-Pvp.skipLintVital=true），本地默认仍然检查
+    lint {
+        checkReleaseBuilds = prop("vp.skipLintVital") != "true"
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -103,6 +120,9 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
 
     implementation("androidx.core:core-ktx:1.15.0")
+    implementation("androidx.core:core-splashscreen:1.0.1")
+    // 安装时按 src/main/baseline-prof.txt 预编译热点代码（手写规则，见该文件说明）
+    implementation("androidx.profileinstaller:profileinstaller:1.4.1")
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")

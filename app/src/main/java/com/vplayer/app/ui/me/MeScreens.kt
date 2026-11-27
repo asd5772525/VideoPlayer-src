@@ -61,6 +61,7 @@ import com.vplayer.app.ui.components.container
 import com.vplayer.app.ui.components.formatTime
 import com.vplayer.app.ui.player.PlayerActivity
 import com.vplayer.app.ui.theme.Accent
+import com.vplayer.app.util.CrashLog
 import kotlinx.coroutines.launch
 
 @Composable
@@ -92,6 +93,10 @@ fun MeScreen(onHistory: () -> Unit, onFavorites: () -> Unit, onSettings: () -> U
         }
         Group("更多") {
             OptionRow("播放与接口设置", subtitle = "数据源 · 解析接口 · 播放器 · 下载", onClick = onSettings, value = "")
+            OptionRow("导出日志", subtitle = "崩溃记录与播放 / 解析错误日志，反馈问题时发给开发者（只保存在本机）", value = remember { "${CrashLog.crashFiles(ctx).size} 次崩溃" }, onClick = {
+                runCatching { ctx.startActivity(CrashLog.export(ctx)) }
+                    .onFailure { Toast.makeText(ctx, "导出失败：${it.message}", Toast.LENGTH_SHORT).show() }
+            })
             OptionRow("清除缓存", subtitle = "清除接口与图片缓存（不影响下载与历史）", onClick = {
                 scope.launch {
                     c.cms.clearCache()

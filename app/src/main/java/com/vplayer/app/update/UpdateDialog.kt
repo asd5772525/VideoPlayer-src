@@ -69,7 +69,8 @@ private fun UpdateBox(
                 Text("影", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold)
             }
             Text("发现新版本", fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp))
-            Text("v${info.versionName}" + if (info.size.isNotBlank()) " · ${info.size}" else "", color = Accent, fontSize = 13.sp)
+            val size = UpdateLogic.pickApk(info, android.os.Build.SUPPORTED_ABIS.toList()).size.ifBlank { info.size }
+            Text("v${info.versionName}" + if (size.isNotBlank()) " · $size" else "", color = Accent, fontSize = 13.sp)
             Column(Modifier.padding(vertical = 12.dp)) {
                 info.changelog.forEach { Text("• $it", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 22.sp) }
             }

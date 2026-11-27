@@ -34,6 +34,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import com.vplayer.app.ui.nav.AppNav
@@ -49,16 +50,22 @@ class MainActivity : ComponentActivity() {
     private val notifPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // 启动画面一直保持到设置（应用锁状态）读出来为止，避免开启应用锁时先闪一下首页
+        val c = (application as App).container
+        installSplashScreen().setKeepOnScreenCondition { !c.settings.loaded.value }
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        val c = (application as App).container
 
         setContent {
             val s by c.settings.state.collectAsStateWithLifecycle()
+            val loaded by c.settings.loaded.collectAsStateWithLifecycle()
             AppTheme(s.theme) {
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     var unlocked by rememberSaveable { mutableStateOf(false) }
-                    if (s.appLock && s.appLockPin.length == 4 && !unlocked) {
+                    if (!loaded) {
+                        // 设置还没读出来：什么都不画（启动画面盖着），绝不先渲染首页
+                        Box(Modifier.fillMaxSize())
+                    } else if (s.appLock && s.appLockPin.length == 4 && !unlocked) {
                         LockScreen(s.appLockPin) { unlocked = true }
                     } else {
                         AppNav()

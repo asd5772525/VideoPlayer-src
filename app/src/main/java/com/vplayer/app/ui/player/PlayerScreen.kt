@@ -78,6 +78,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import com.vplayer.app.player.HoldSeek
+import com.vplayer.app.player.TapZone
 import com.vplayer.app.ui.category.Chip
 import com.vplayer.app.ui.components.Group
 import com.vplayer.app.ui.components.OptionRow
@@ -165,7 +169,8 @@ private fun PlayerOverlay(vm: PlayerViewModel, st: PlayerUiState, activity: Play
     var playing by remember { mutableStateOf(false) }
     var dragging by remember { mutableStateOf<Float?>(null) }
     var gestureText by remember { mutableStateOf<String?>(null) }
-    var longPressing by remember { mutableStateOf(false) }
+    var tapHint by remember { mutableStateOf<Pair<String, Long>?>(null) }
+    val haptic = LocalHapticFeedback.current
     var interaction by remember { mutableLongStateOf(0L) }
     val audio = remember { activity.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
 
@@ -183,22 +188,33 @@ private fun PlayerOverlay(vm: PlayerViewModel, st: PlayerUiState, activity: Play
         if (showControls && playing) { delay(4000); showControls = false }
     }
     LaunchedEffect(st.showResume) { if (st.showResume) { delay(6000); vm.hideResume() } }
+    LaunchedEffect(tapHint) { if (tapHint != null) { delay(700); tapHint = null } }
 
     Box(
         Modifier.fillMaxSize()
-            .pointerInput(locked, st.longPressSpeed, st.speed) {
+            .pointerInput(locked) {
                 detectTapGestures(
                     onTap = { showControls = !showControls; interaction = System.currentTimeMillis() },
-                    onDoubleTap = { if (!locked) { if (player.isPlaying) player.pause() else player.play() } },
-                    onLongPress = {
-                        if (!locked && player.isPlaying) {
-                            longPressing = true
-                            player.setPlaybackSpeed(st.longPressSpeed)
+                    onDoubleTap = { o ->
+                        if (!locked) when (TapZone.of(o.x, size.width.toFloat())) {
+                            TapZone.LEFT -> { vm.seekBy(-10_000); tapHint = "« 10 秒" to System.currentTimeMillis() }
+                            TapZone.RIGHT -> { vm.seekBy(10_000); tapHint = "10 秒 »" to System.currentTimeMillis() }
+                            TapZone.CENTER -> if (player.isPlaying) player.pause() else player.play()
+                        }
+                    },
+                    onLongPress = { o ->
+                        if (!locked) {
+                            val rewind = HoldSeek.isRewind(o.x, size.width.toFloat())
+                            // 快进只在播放中生效；快退暂停时也可以用
+                            if (rewind || player.isPlaying) {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                vm.startHold(rewind)
+                            }
                         }
                     },
                     onPress = {
                         tryAwaitRelease()
-                        if (longPressing) { longPressing = false; player.setPlaybackSpeed(st.speed) }
+                        vm.endHold()
                     },
                 )
             }
@@ -268,8 +284,16 @@ private fun PlayerOverlay(vm: PlayerViewModel, st: PlayerUiState, activity: Play
             Text(it, color = Color.White, fontSize = 16.sp, modifier = Modifier.align(Alignment.Center)
                 .background(Color(0xAA000000), RoundedCornerShape(8.dp)).padding(horizontal = 14.dp, vertical = 8.dp))
         }
-        if (longPressing) Text("${st.longPressSpeed}x 快进中 ▶▶", color = Color.White, fontSize = 13.sp,
-            modifier = Modifier.align(Alignment.TopCenter).padding(top = 16.dp).background(Color(0xAA000000), RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 4.dp))
+        st.holdLabel?.let { label ->
+            Text(label, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 20.dp).background(Color(0xCC000000), RoundedCornerShape(18.dp))
+                    .padding(horizontal = 16.dp, vertical = 6.dp))
+        }
+        tapHint?.let { (t, _) ->
+            Text(t, color = Color.White, fontSize = 15.sp,
+                modifier = Modifier.align(if (t.startsWith("«")) Alignment.CenterStart else Alignment.CenterEnd)
+                    .padding(horizontal = 56.dp).background(Color(0xAA000000), RoundedCornerShape(18.dp)).padding(horizontal = 14.dp, vertical = 6.dp))
+        }
         if (st.showResume) Row(
             Modifier.align(Alignment.TopStart).padding(12.dp).padding(top = if (showControls) 36.dp else 0.dp)
                 .background(Color(0xAA000000), RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 6.dp)
@@ -391,7 +415,7 @@ private fun InfoPanel(vm: PlayerViewModel, st: PlayerUiState) {
             modifier = Modifier.padding(top = 12.dp))
         val lineName = st.vod?.lines?.getOrNull(st.line)?.name ?: "本地"
         Text(
-            "$lineName · ${if (st.isLocal) "离线播放" else if (st.isDirect) "直链" else "解析"} · 已缓冲 ${bufferPct.toInt()}% · $speedText",
+            "$lineName · ${if (st.isLocal) "离线播放" else if (st.isDirect) "直链" else "解析" + st.parseName.takeIf { it.isNotBlank() }?.let { "（$it）" }.orEmpty()} · 已缓冲 ${bufferPct.toInt()}% · $speedText",
             fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp),
         )
 
@@ -442,7 +466,7 @@ private fun InfoPanel(vm: PlayerViewModel, st: PlayerUiState) {
                 }
             }
         }
-        Text("手势：左侧亮度 · 右侧音量 · 横滑进度 · 双击暂停 · 长按倍速 · 画中画 · 锁屏",
+        Text("手势：左侧亮度 · 右侧音量 · 横滑进度 · 双击左/右 ∓10 秒 · 双击中间暂停 · 长按右侧快进 / 左侧快退 · 画中画 · 锁屏",
             fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 12.dp))
         Spacer(Modifier.height(24.dp))
     }

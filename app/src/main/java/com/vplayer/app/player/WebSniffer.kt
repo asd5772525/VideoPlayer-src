@@ -29,7 +29,7 @@ object WebSniffer {
     }
 
     @SuppressLint("SetJavaScriptEnabled")
-    suspend fun sniff(context: Context, pageUrl: String, timeoutMs: Long = 15_000, referer: String? = null): String? =
+    suspend fun sniff(context: Context, pageUrl: String, timeoutMs: Long = 15_000, referer: String? = null, userAgent: String? = null): String? =
         withContext(Dispatchers.Main) {
             val result = CompletableDeferred<String>()
             val web = WebView(context.applicationContext)
@@ -38,7 +38,7 @@ object WebSniffer {
                     javaScriptEnabled = true
                     domStorageEnabled = true
                     mediaPlaybackRequiresUserGesture = false
-                    userAgentString = DEFAULT_UA
+                    userAgentString = userAgent?.takeIf { it.isNotBlank() } ?: DEFAULT_UA
                     blockNetworkImage = true
                     loadsImagesAutomatically = false
                     @Suppress("DEPRECATION")

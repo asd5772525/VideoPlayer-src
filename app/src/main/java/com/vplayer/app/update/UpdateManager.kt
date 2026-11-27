@@ -13,6 +13,7 @@ import com.vplayer.app.data.net.Http
 import com.vplayer.app.data.net.await
 import com.vplayer.app.data.net.getString
 import com.vplayer.app.data.prefs.SettingsRepository
+import com.vplayer.app.util.AppLog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -38,7 +39,26 @@ object UpdateLogic {
     fun parse(body: String): UpdateInfo = json.decodeFromString(UpdateInfo.serializer(), body.trimStart('\uFEFF'))
 
     /** 只有 versionCode 更大且有下载地址才算新版本 */
-    fun isNewer(info: UpdateInfo, currentCode: Int): Boolean = info.versionCode > currentCode && info.apkUrl.isNotBlank()
+    fun isNewer(info: UpdateInfo, currentCode: Int): Boolean =
+        info.versionCode > currentCode && (info.apkUrl.isNotBlank() || info.apks.values.any { it.url.isNotBlank() })
+
+    /** 选中的安装包 */
+    data class Pick(val abi: String, val url: String, val md5: String, val size: String)
+
+    /**
+     * 按设备支持的 ABI（Build.SUPPORTED_ABIS，按优先级）挑最合适的分包；都没有就用 universal（顶层 apkUrl）。
+     * 旧格式（没有 apks）直接返回顶层字段。
+     */
+    fun pickApk(info: UpdateInfo, supportedAbis: List<String>): Pick {
+        for (abi in supportedAbis) {
+            val v = info.apks[abi] ?: continue
+            if (v.url.isNotBlank()) return Pick(abi, v.url, v.md5, v.size)
+        }
+        if (info.apkUrl.isNotBlank()) return Pick("universal", info.apkUrl, info.md5, info.size)
+        val u = info.apks["universal"]
+        if (u != null && u.url.isNotBlank()) return Pick("universal", u.url, u.md5, u.size)
+        return Pick("universal", "", info.md5, info.size)
+    }
 
     fun md5(f: File): String {
         val md = MessageDigest.getInstance("MD5")
@@ -116,9 +136,11 @@ class UpdateManager(
         try {
             _state.value = UpdateState.Downloading(info, 0f)
             val dir = File(context.cacheDir, "update").apply { mkdirs() }
-            val file = File(dir, "update-${info.versionCode}.apk")
-            if (!(file.exists() && info.md5.isNotBlank() && UpdateLogic.md5Matches(file, info.md5))) {
-                Http.client.newCall(Request.Builder().url(info.apkUrl).build()).await().use { r ->
+            val pick = UpdateLogic.pickApk(info, Build.SUPPORTED_ABIS.toList())
+            AppLog.i("update", "下载 v${info.versionName} 安装包：${pick.abi}")
+            val file = File(dir, "update-${info.versionCode}-${pick.abi}.apk")
+            if (!(file.exists() && pick.md5.isNotBlank() && UpdateLogic.md5Matches(file, pick.md5))) {
+                Http.client.newCall(Request.Builder().url(pick.url).build()).await().use { r ->
                     if (!r.isSuccessful) throw IOException("HTTP ${r.code}")
                     val body = r.body ?: throw IOException("空响应")
                     val total = body.contentLength()
@@ -140,7 +162,7 @@ class UpdateManager(
                         }
                     }
                 }
-                if (!UpdateLogic.md5Matches(file, info.md5)) {
+                if (!UpdateLogic.md5Matches(file, pick.md5)) {
                     file.delete()
                     throw IOException("MD5 校验失败，安装包可能已损坏")
                 }
@@ -148,6 +170,7 @@ class UpdateManager(
             _state.value = UpdateState.ReadyToInstall(info, file)
             withContext(Dispatchers.Main) { install(file) }
         } catch (e: Exception) {
+            AppLog.e("update", "更新下载失败", e)
             _state.value = UpdateState.Failed(info, e.message ?: "下载失败")
         }
     }

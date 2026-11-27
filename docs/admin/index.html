@@ -89,6 +89,21 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--acc)}
 .steps li{counter-increment:s;position:relative;padding-left:28px;margin:8px 0;font-size:13px;color:#c8cad4}
 .steps li:before{content:counter(s);position:absolute;left:0;top:1px;width:20px;height:20px;border-radius:10px;background:var(--acc);color:#fff;font-size:12px;display:flex;align-items:center;justify-content:center}
 .hidden{display:none!important}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.chip{font-size:11px;padding:2px 8px;border-radius:10px;background:#7b5cff22;color:#c9c3ff;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip.gone{background:#ff5a5a22;color:var(--bad);text-decoration:line-through}
+.chip.ad{background:#3ecf8e1f;color:var(--ok)}
+.chip.off{background:var(--card2);color:var(--sub)}
+.checks{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+.checks label{display:inline-flex;align-items:center;gap:6px;background:#0f1117;border:1px solid var(--line);border-radius:10px;padding:7px 10px;font-size:13px;cursor:pointer;max-width:100%}
+.checks label span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.checks input{accent-color:var(--acc);width:16px;height:16px;flex-shrink:0}
+.checks label:has(input:checked){border-color:var(--acc);background:#ff5c8a14}
+details.adv{margin-top:10px;border-top:1px dashed var(--line);padding-top:8px}
+details.adv summary{cursor:pointer;color:var(--sub);font-size:13px}
+.lrow{background:#0f1117;border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-top:8px}
+.lrow .row input[type=text]{flex:1;min-width:0}
+.box2{background:#ffffff06;border-radius:12px;padding:4px 12px 10px;margin-top:12px}
 </style>
 </head>
 <body>
@@ -266,14 +281,35 @@ function normalize(c) {
   c = Object.assign(JSON.parse(JSON.stringify(DEFAULT_CFG)), c || {});
   c.player = Object.assign({}, DEFAULT_CFG.player, c.player || {});
   c.notice = Object.assign({}, DEFAULT_CFG.notice, c.notice || {});
-  c.sources = (c.sources || []).map(s => ({ key: s.key || uid('s'), name: s.name || '', api: s.api || '', type: s.type || detectType(s.api || ''), enabled: s.enabled !== false, order: s.order || 0, default: !!s.default }));
-  c.parses = (c.parses || []).map(p => ({ key: p.key || uid('p'), name: p.name || '', url: p.url || '', type: p.type || 'json', enabled: p.enabled !== false, order: p.order || 0 }));
+  c.sources = (c.sources || []).map(s => ({ key: s.key || uid('s'), name: s.name || '', api: s.api || '', type: s.type || detectType(s.api || ''), enabled: s.enabled !== false, order: s.order || 0, default: !!s.default,
+    parses: Array.isArray(s.parses) ? s.parses.filter(k => typeof k === 'string' && k) : [],
+    lineParses: (s.lineParses && typeof s.lineParses === 'object' && !Array.isArray(s.lineParses)) ? Object.fromEntries(Object.entries(s.lineParses).filter(([n, v]) => n && Array.isArray(v)).map(([n, v]) => [n, v.filter(k => typeof k === 'string' && k)])) : {},
+    adFilter: s.adFilter && typeof s.adFilter === 'object' ? normAd(s.adFilter) : null }));
+  c.parses = (c.parses || []).map(p => ({ key: p.key || uid('p'), name: p.name || '', url: p.url || '', type: p.type || 'json', enabled: p.enabled !== false, order: p.order || 0,
+    headers: (p.headers && typeof p.headers === 'object') ? Object.fromEntries(Object.entries(p.headers).filter(([k, v]) => k && v != null).map(([k, v]) => [k, String(v)])) : {},
+    timeout: Math.max(0, Math.min(60, parseInt(p.timeout) || 0)), jsonPath: String(p.jsonPath || '') }));
   return c;
 }
+const AD_MAX_DEFAULT = 30;
+function normAd(a) { return { enabled: a.enabled !== false, keywords: (Array.isArray(a.keywords) ? a.keywords : []).map(k => String(k).trim()).filter(Boolean), regex: String(a.regex || ''), discontinuityMax: Math.max(5, Math.min(300, parseInt(a.discontinuityMax) || AD_MAX_DEFAULT)) } }
+/* 去广告配置是否等于默认（=只用 App 的智能识别），等于默认就不写进 config.json */
+function adIsDefault(a) { return !a || (a.enabled && !a.keywords.length && !a.regex && a.discontinuityMax === AD_MAX_DEFAULT) }
 function finalCfg() {
   const c = JSON.parse(JSON.stringify(cfg));
-  c.sources.forEach((s, i) => { s.order = i + 1; if (!s.name) s.name = hostOf(s.api) });
-  c.parses.forEach((p, i) => { p.order = i + 1; if (!p.name) p.name = hostOf(p.url) });
+  c.sources.forEach((s, i) => {
+    s.order = i + 1; if (!s.name) s.name = hostOf(s.api);
+    // 可选字段：为空时不写，保持 config.json 干净（也兼容旧版 App）
+    if (!s.parses || !s.parses.length) delete s.parses;
+    Object.keys(s.lineParses || {}).forEach(n => { if (!s.lineParses[n].length) delete s.lineParses[n] });
+    if (!s.lineParses || !Object.keys(s.lineParses).length) delete s.lineParses;
+    if (adIsDefault(s.adFilter)) delete s.adFilter;
+  });
+  c.parses.forEach((p, i) => {
+    p.order = i + 1; if (!p.name) p.name = hostOf(p.url);
+    if (!p.headers || !Object.keys(p.headers).length) delete p.headers;
+    if (!p.timeout) delete p.timeout;
+    if (!p.jsonPath) delete p.jsonPath;
+  });
   if (c.sources.length && !c.sources.some(s => s.default)) c.sources[0].default = true;
   return c;
 }
@@ -357,6 +393,7 @@ function renderList(kind) {
         <label class="sw" title="${it.enabled ? '已启用' : '已停用'}"><input type="checkbox" ${it.enabled ? 'checked' : ''} onchange="toggleEnabled('${kind}',${i},this.checked)"><span></span></label></div>
       <div class="url">${esc(it[field])}</div>
       <div class="meta">${st.text}</div>
+      ${isSrc ? sourceChips(it) : parseChips(it)}
       <div class="acts">
         <button class="btn sm" onclick="move('${kind}',${i},-1)" ${i === 0 ? 'disabled' : ''}>↑</button>
         <button class="btn sm" onclick="move('${kind}',${i},1)" ${i === list.length - 1 ? 'disabled' : ''}>↓</button>
@@ -375,19 +412,92 @@ function renderList(kind) {
      <div class="url">${esc(r.item[field])}</div><div class="meta">${esc(r.reason || '')} · 移除于 ${ago(r.removedAt)}</div></div>`).join('');
 }
 
+/* ---------- 解析绑定 / 去广告 的小工具 ---------- */
+function removedParseKeys() { return new Set(removed.filter(r => r.kind === 'parses').map(r => r.item.key)) }
+function parseLabel(k) {
+  const p = cfg.parses.find(x => x.key === k); if (p) return { name: p.name || hostOf(p.url), gone: false, off: !p.enabled };
+  const r = removed.find(x => x.kind === 'parses' && x.item.key === k); if (r) return { name: (r.item.name || hostOf(r.item.url)) + '（已自动下架）', gone: false, off: true };
+  return { name: k + '（已删除）', gone: true };
+}
+function chip(k) { const l = parseLabel(k); return `<span class="chip ${l.gone ? 'gone' : l.off ? 'off' : ''}" title="${esc(l.name)}">${esc(l.name)}</span>` }
+function sourceChips(it) {
+  const parts = [];
+  if ((it.parses || []).length) parts.push(`<span class="meta">🔗 优先解析</span>${it.parses.map(chip).join('')}`);
+  Object.entries(it.lineParses || {}).forEach(([n, ks]) => { if (ks.length) parts.push(`<span class="meta">线路「${esc(n)}」</span>${ks.map(chip).join('')}`) });
+  const a = it.adFilter;
+  if (a && !a.enabled) parts.push('<span class="chip off">去广告：本源关闭</span>');
+  else if (a && (a.keywords.length || a.regex)) parts.push(`<span class="chip ad">去广告：智能 + ${a.keywords.length} 个关键词${a.regex ? ' + 正则' : ''}</span>`);
+  return parts.length ? `<div class="chips">${parts.join('')}</div>` : '';
+}
+function parseChips(it) {
+  const parts = [], h = it.headers || {};
+  if (h.Referer) parts.push(`<span class="chip off">Referer</span>`);
+  if (h['User-Agent']) parts.push(`<span class="chip off">自定义 UA</span>`);
+  if (it.timeout) parts.push(`<span class="chip off">超时 ${it.timeout}s</span>`);
+  if (it.jsonPath) parts.push(`<span class="chip off">字段 ${esc(it.jsonPath)}</span>`);
+  const n = cfg.sources.filter(s => (s.parses || []).includes(it.key) || Object.values(s.lineParses || {}).some(v => v.includes(it.key))).length;
+  if (n) parts.push(`<span class="chip">被 ${n} 个播放源绑定</span>`);
+  return parts.length ? `<div class="chips">${parts.join('')}</div>` : '';
+}
+function parseChecks(name, selected) {
+  if (!cfg.parses.length) return '<div class="meta">还没有解析接口。先到「解析接口」页添加，再回来勾选。</div>';
+  return `<div class="checks">${cfg.parses.map(p => `<label><input type="checkbox" name="${name}" value="${esc(p.key)}" ${selected.includes(p.key) ? 'checked' : ''}><span>${esc(p.name || hostOf(p.url))}${p.enabled ? '' : '（已停用）'}</span></label>`).join('')}</div>`;
+}
+function lineRow(name, keys) {
+  const id = uid('lr');
+  return `<div class="lrow" data-lr="${id}"><div class="row"><input type="text" class="lr_name" value="${esc(name)}" placeholder="线路名，和片源里的 vod_play_from 一致，如 m3u8">
+    <button class="btn sm ghost" onclick="this.closest('.lrow').remove()" title="删除这条规则">✕</button></div>${parseChecks(id, keys)}</div>`;
+}
+function addLineRow() { $('#e_lines').insertAdjacentHTML('beforeend', lineRow('', [])) }
+
 function editCard(kind, it, i) {
   const isSrc = kind === 'sources', field = isSrc ? 'api' : 'url';
+  let extra = '';
+  if (isSrc) {
+    const a = it.adFilter || normAd({});
+    extra = `<div class="box2">
+      <label class="f">绑定解析接口 <span class="help" title="这个源的片子优先用勾选的解析；没勾选的解析排在后面依旧可用。不勾 = 全部按测速顺序。">?</span></label>
+      <div class="meta">这个源的视频不是直链时，优先用勾选的解析（按列表顺序）。不勾 = 按测速顺序使用全部解析。</div>
+      ${parseChecks('e_parses', it.parses)}
+      <details class="adv" ${Object.keys(it.lineParses || {}).length ? 'open' : ''}><summary>按线路单独绑定（高级，可不填）</summary>
+        <div class="meta" style="margin-top:6px">同一个源里不同线路要用不同解析时才需要。线路规则优先于上面的绑定。</div>
+        <div id="e_lines">${Object.entries(it.lineParses || {}).map(([n, ks]) => lineRow(n, ks)).join('')}</div>
+        <button class="btn sm" style="margin-top:8px" onclick="addLineRow()">＋ 添加线路规则</button>
+      </details></div>
+    <div class="box2">
+      <div class="opt"><div class="l">去除插播广告<small>App 会自动识别 M3U8 中间插的短广告（最多去掉 20%）。关闭 = 这个源完全不过滤。</small></div>
+        <label class="sw"><input type="checkbox" id="e_ad" ${a.enabled ? 'checked' : ''} onchange="$('#e_adbox').classList.toggle('hidden',!this.checked)"><span></span></label></div>
+      <div id="e_adbox" class="${a.enabled ? '' : 'hidden'}">
+        <label class="f">广告分片关键词（可选，每行一个；分片地址里包含就删除）</label>
+        <textarea id="e_adkw" style="min-height:70px" placeholder="例如：&#10;/ad/&#10;adslot">${esc(a.keywords.join('\n'))}</textarea>
+        <details class="adv" ${a.regex || a.discontinuityMax !== AD_MAX_DEFAULT ? 'open' : ''}><summary>高级</summary>
+          <label class="f">正则表达式（可选，匹配分片地址）</label><input type="text" id="e_adre" value="${esc(a.regex)}" placeholder="例如 /adv?/\\d+\\.ts">
+          <label class="f">单段广告最长秒数（超过的不算广告，默认 30）</label><input type="number" id="e_admax" min="5" max="300" value="${a.discontinuityMax}">
+        </details>
+      </div></div>`;
+  } else {
+    const h = it.headers || {};
+    extra = `<details class="adv" ${h.Referer || h['User-Agent'] || it.timeout || it.jsonPath ? 'open' : ''}><summary>高级设置（请求头 / 超时 / 返回字段）</summary>
+      <label class="f">Referer（可选，有些解析要求带来源页）</label><input type="text" id="e_ref" value="${esc(h.Referer || '')}" placeholder="https://">
+      <label class="f">User-Agent（可选）</label><input type="text" id="e_ua" value="${esc(h['User-Agent'] || '')}" placeholder="留空用 App 默认">
+      <label class="f">超时（秒，0 = 默认：JSON 10 秒，网页嗅探 15 秒）</label><input type="number" id="e_to" min="0" max="60" value="${it.timeout || 0}">
+      <label class="f">JSON 里视频地址的字段（可选）</label><input type="text" id="e_jp" value="${esc(it.jsonPath || '')}" placeholder="留空自动识别：url / data.url / playurl / data.playurl / m3u8 / data / result.url">
+      <div class="meta">请求头会同时用于播放解析出来的地址。</div></details>`;
+  }
   return `<div class="card" style="border-color:var(--acc)">
     <label class="f">名称</label><input type="text" id="e_name" value="${esc(it.name)}" placeholder="${esc(hostOf(it[field]))}">
     <label class="f">${isSrc ? '接口地址' : '解析地址前缀'}</label><input type="url" id="e_url" value="${esc(it[field])}">
-    <div class="err" id="e_err"></div>
     <label class="f">类型</label>
     <select id="e_type">${isSrc ? `<option value="json" ${it.type !== 'xml' ? 'selected' : ''}>JSON</option><option value="xml" ${it.type === 'xml' ? 'selected' : ''}>XML</option>`
       : `<option value="json" ${it.type !== 'webview' ? 'selected' : ''}>JSON（返回 url 字段）</option><option value="webview" ${it.type === 'webview' ? 'selected' : ''}>网页嗅探</option>`}</select>
+    ${extra}
+    <div class="err" id="e_err"></div>
     <div class="acts"><button class="btn pri sm" onclick="saveEdit('${kind}',${i})">完成</button><button class="btn sm" onclick="editing=null;renderList('${kind}')">取消</button></div></div>`;
 }
 function startEdit(kind, i) {
   editing = { kind, idx: i }; renderList(kind);
+  // 用户一改输入，上一次的错误提示就清掉
+  const card = $('#e_err').closest('.card'); card.addEventListener('input', () => { $('#e_err').textContent = '' });
   // 改了地址时自动重新识别 JSON / XML
   if (kind === 'sources') $('#e_url').oninput = e => { $('#e_type').value = detectType(e.target.value) };
 }
@@ -396,16 +506,64 @@ function saveEdit(kind, i) {
   const url = $('#e_url').value.trim(), name = $('#e_name').value.trim();
   if (!isUrl(url)) { $('#e_err').textContent = '请填写以 http:// 或 https:// 开头的完整地址'; return }
   if (cfg[kind].some((x, j) => j !== i && x[field] === url)) { $('#e_err').textContent = '这个地址已经存在了'; return }
-  Object.assign(cfg[kind][i], { name: name || hostOf(url), [field]: url, type: $('#e_type').value });
-  editing = null; renderList(kind); refreshBar();
+  const patch = { name: name || hostOf(url), [field]: url, type: $('#e_type').value };
+  if (isSrc) {
+    const checked = n => [...document.querySelectorAll(`input[name="${n}"]:checked`)].map(x => x.value);
+    patch.parses = checked('e_parses');
+    const lp = {};
+    for (const row of document.querySelectorAll('#e_lines .lrow')) {
+      const n = row.querySelector('.lr_name').value.trim(), ks = checked(row.dataset.lr);
+      if (!n && !ks.length) continue;
+      if (!n) { $('#e_err').textContent = '线路规则需要填写线路名'; return }
+      if (!ks.length) { $('#e_err').textContent = `线路「${n}」还没有勾选解析接口`; return }
+      if (lp[n]) { $('#e_err').textContent = `线路「${n}」重复了`; return }
+      lp[n] = ks;
+    }
+    patch.lineParses = lp;
+    const kw = $('#e_adkw').value.split(/\n/).map(x => x.trim()).filter(Boolean), re = $('#e_adre').value.trim();
+    if (re) { try { new RegExp(re) } catch (e) { $('#e_err').textContent = '去广告正则写法有误：' + e.message; return } }
+    const max = Math.max(5, Math.min(300, parseInt($('#e_admax').value) || AD_MAX_DEFAULT));
+    patch.adFilter = $('#e_ad').checked ? normAd({ enabled: true, keywords: [...new Set(kw)], regex: re, discontinuityMax: max }) : normAd({ enabled: false, keywords: kw, regex: re, discontinuityMax: max });
+    if (adIsDefault(patch.adFilter)) patch.adFilter = null;
+  } else {
+    const h = {}, ref = $('#e_ref').value.trim(), ua = $('#e_ua').value.trim();
+    if (ref && !isUrl(ref)) { $('#e_err').textContent = 'Referer 需要是完整地址（http:// 或 https:// 开头）'; return }
+    if (ref) h.Referer = ref; if (ua) h['User-Agent'] = ua;
+    // 保留手写在 config.json 里的其他请求头
+    Object.entries(cfg[kind][i].headers || {}).forEach(([k, v]) => { if (k !== 'Referer' && k !== 'User-Agent') h[k] = v });
+    patch.headers = h;
+    patch.timeout = Math.max(0, Math.min(60, parseInt($('#e_to').value) || 0));
+    patch.jsonPath = $('#e_jp').value.trim();
+  }
+  Object.assign(cfg[kind][i], patch);
+  editing = null; renderList(kind); if (!isSrc) renderList('sources'); refreshBar();
 }
 function toggleEnabled(kind, i, v) { cfg[kind][i].enabled = v; renderList(kind); refreshBar() }
 function move(kind, i, d) { const l = cfg[kind], j = i + d; if (j < 0 || j >= l.length) return;[l[i], l[j]] = [l[j], l[i]]; renderList(kind); refreshBar() }
 function setDefault(i) { cfg.sources.forEach((s, j) => s.default = j === i); renderList('sources'); refreshBar(); toast('已设为默认源') }
+function boundBy(key) { return cfg.sources.filter(s => (s.parses || []).includes(key) || Object.values(s.lineParses || {}).some(v => v.includes(key))) }
+function unbind(key) { cfg.sources.forEach(s => { s.parses = s.parses.filter(k => k !== key); Object.keys(s.lineParses || {}).forEach(n => { s.lineParses[n] = s.lineParses[n].filter(k => k !== key); if (!s.lineParses[n].length) delete s.lineParses[n] }) }) }
 function del(kind, i) {
   const it = cfg[kind][i];
-  if (!confirm(`确定删除「${it.name || hostOf(it.api || it.url)}」吗？\n（保存后生效，可在底部「预览修改」中确认）`)) return;
-  cfg[kind].splice(i, 1); renderList(kind); refreshBar();
+  const users = kind === 'parses' ? boundBy(it.key) : [];
+  const extra = users.length ? `\n\n有 ${users.length} 个播放源绑定了它（${users.map(s => s.name || hostOf(s.api)).join('、')}），删除后会自动解除绑定。` : '';
+  if (!confirm(`确定删除「${it.name || hostOf(it.api || it.url)}」吗？${extra}\n（保存后生效，可在底部「预览修改」中确认）`)) return;
+  cfg[kind].splice(i, 1);
+  if (kind === 'parses') { unbind(it.key); renderList('sources') }
+  renderList(kind); refreshBar();
+}
+/* 失效绑定：绑定的 key 既不在解析列表、也不在“已自动下架”列表里（通常是手改 config.json 留下的） */
+function danglingBindings() {
+  const ok = new Set([...cfg.parses.map(p => p.key), ...removedParseKeys()]), out = [];
+  cfg.sources.forEach(s => {
+    const keys = [...s.parses, ...Object.values(s.lineParses || {}).flat()].filter(k => !ok.has(k));
+    if (keys.length) out.push({ s, keys: [...new Set(keys)] });
+  });
+  return out;
+}
+function cleanDangling() {
+  danglingBindings().forEach(({ keys }) => keys.forEach(unbind));
+  closeModal(); renderAll(); toast('已清理失效的解析绑定，记得保存');
 }
 function restore(ri) {
   const r = removed[ri], field = r.kind === 'sources' ? 'api' : 'url';
@@ -490,8 +648,8 @@ function openAdd(kind) {
     const url = u.value.trim(), name = $('#a_name').value.trim(), field = isSrc ? 'api' : 'url';
     if (!isUrl(url)) { $('#a_err').textContent = '请填写以 http:// 或 https:// 开头的完整地址'; return }
     if (cfg[kind].some(x => x[field] === url)) { $('#a_err').textContent = '这个地址已经添加过了'; return }
-    cfg[kind].push(isSrc ? { key: uid('s'), name: name || hostOf(url), api: url, type: detectType(url), enabled: true, order: 0, default: cfg.sources.length === 0 }
-      : { key: uid('p'), name: name || hostOf(url), url, type: $('#a_ptype').value, enabled: true, order: 0 });
+    cfg[kind].push(isSrc ? { key: uid('s'), name: name || hostOf(url), api: url, type: detectType(url), enabled: true, order: 0, default: cfg.sources.length === 0, parses: [], lineParses: {}, adFilter: null }
+      : { key: uid('p'), name: name || hostOf(url), url, type: $('#a_ptype').value, enabled: true, order: 0, headers: {}, timeout: 0, jsonPath: '' });
     closeModal(); renderList(kind); refreshBar(); toast('已添加，记得点底部「保存并编译发布」');
   };
 }
@@ -509,8 +667,8 @@ function openBulk(kind) {
       const m = line.match(/https?:\/\/\S+/i); if (!m) { bad++; return }
       const url = m[0].replace(/[,，]$/, ''); let name = line.replace(m[0], '').replace(/[,，$|\s]+/g, ' ').trim();
       if (cfg[kind].some(x => x[field] === url)) { skip++; return }
-      cfg[kind].push(isSrc ? { key: uid('s'), name: name || hostOf(url), api: url, type: detectType(url), enabled: true, order: 0, default: cfg.sources.length === 0 }
-        : { key: uid('p'), name: name || hostOf(url), url, type: 'json', enabled: true, order: 0 });
+      cfg[kind].push(isSrc ? { key: uid('s'), name: name || hostOf(url), api: url, type: detectType(url), enabled: true, order: 0, default: cfg.sources.length === 0, parses: [], lineParses: {}, adFilter: null }
+        : { key: uid('p'), name: name || hostOf(url), url, type: 'json', enabled: true, order: 0, headers: {}, timeout: 0, jsonPath: '' });
       add++;
     });
     renderList(kind); refreshBar();
@@ -565,6 +723,9 @@ function validate() {
     });
   };
   chk('sources', 'api', '播放源'); chk('parses', 'url', '解析接口');
+  danglingBindings().forEach(({ s, keys }) => errs.push(`播放源「${s.name || hostOf(s.api)}」绑定的解析接口已被删除：${keys.join('、')}`));
+  cfg.sources.forEach(s => { if (s.adFilter && s.adFilter.regex) { try { new RegExp(s.adFilter.regex) } catch (e) { errs.push(`播放源「${s.name}」的去广告正则写法有误`) } } });
+  cfg.parses.forEach(p => { if (p.headers && p.headers.Referer && !isUrl(p.headers.Referer)) errs.push(`解析接口「${p.name}」的 Referer 不是完整地址`) });
   if (cfg.notice.enabled && !cfg.notice.text.trim()) errs.push('公告已开启但内容为空');
   if (cfg.notice.link && !isUrl(cfg.notice.link)) errs.push('公告链接无效');
   return errs;
@@ -589,7 +750,27 @@ function summaryHtml() {
   for (const [kind, f, label] of [['sources', 'api', '播放源'], ['parses', 'url', '解析接口']]) {
     const o = new Map(old[kind].map(x => [x.key, x])), n = new Map(now[kind].map(x => [x.key, x]));
     const added = now[kind].filter(x => !o.has(x.key)), gone = old[kind].filter(x => !n.has(x.key));
-    const changed = now[kind].filter(x => o.has(x.key) && ['name', f, 'type', 'enabled', 'default'].some(k => o.get(x.key)[k] !== x[k]));
+    const J = v => JSON.stringify(v ?? null);
+    const changed = now[kind].filter(x => o.has(x.key) && ['name', f, 'type', 'enabled', 'default', 'timeout', 'jsonPath'].some(k => (o.get(x.key)[k] ?? '') !== (x[k] ?? '')) || (o.has(x.key) && J(o.get(x.key).headers || {}) !== J(x.headers || {})));
+    if (kind === 'sources') {
+      const nmK = k => esc(parseLabel(k).name), oldS = now[kind].filter(x => o.has(x.key));
+      oldS.forEach(x => {
+        const y = normalize({ sources: [o.get(x.key)] }).sources[0], z = normalize({ sources: [x] }).sources[0];
+        if (J(y.parses) !== J(z.parses) || J(y.lineParses) !== J(z.lineParses)) {
+          const lp = Object.entries(z.lineParses).map(([n, ks]) => `线路「${esc(n)}」→ ${ks.map(nmK).join('、')}`);
+          out.push(`🔗 「${nm(x, f)}」解析绑定：${z.parses.length ? z.parses.map(nmK).join('、') : '不绑定（按测速）'}${lp.length ? '；' + lp.join('；') : ''}`);
+        }
+        if (J(y.adFilter && adIsDefault(y.adFilter) ? null : y.adFilter) !== J(z.adFilter && adIsDefault(z.adFilter) ? null : z.adFilter)) {
+          const a = z.adFilter;
+          out.push(`🧹 「${nm(x, f)}」去广告：${a && !a.enabled ? '本源关闭' : a ? `智能识别 + ${a.keywords.length} 个关键词${a.regex ? ' + 正则' : ''}` : '智能识别（默认）'}`);
+        }
+      });
+      added.forEach(x => {
+        const z = normalize({ sources: [x] }).sources[0], a = z.adFilter;
+        if (z.parses.length || Object.keys(z.lineParses).length) out.push(`🔗 「${nm(x, f)}」解析绑定：${z.parses.length ? z.parses.map(nmK).join('、') : '—'}${Object.entries(z.lineParses).map(([n, ks]) => `；线路「${esc(n)}」→ ${ks.map(nmK).join('、')}`).join('')}`);
+        if (a && !adIsDefault(a)) out.push(`🧹 「${nm(x, f)}」去广告：${!a.enabled ? '本源关闭' : `智能识别 + ${a.keywords.length} 个关键词${a.regex ? ' + 正则' : ''}`}`);
+      });
+    }
     const moved = now[kind].filter(x => o.has(x.key)).map(x => x.key).join() !== old[kind].filter(x => n.has(x.key)).map(x => x.key).join();
     if (added.length) out.push(`➕ 新增${label} ${added.length} 个：${added.map(x => nm(x, f)).join('、')}`);
     if (gone.length) out.push(`🗑 删除${label} ${gone.length} 个：${gone.map(x => nm(x, f)).join('、')}`);
@@ -619,7 +800,10 @@ let saving = false;
 async function save(publish) {
   if (saving) return;
   const errs = validate();
-  if (errs.length) { modal(`<h3>还有问题需要修正</h3><div class="res bad">${errs.map(esc).join('<br>')}</div><div class="foot"><button class="btn pri" onclick="closeModal()">好的</button></div>`); return }
+  if (errs.length) {
+    const fix = danglingBindings().length ? '<button class="btn" onclick="cleanDangling()">🧹 一键清理失效绑定</button>' : '';
+    modal(`<h3>还有问题需要修正</h3><div class="res bad">${errs.map(esc).join('<br>')}</div><div class="foot">${fix}<button class="btn pri" onclick="closeModal()">好的</button></div>`); return
+  }
   const dirty = isDirty();
   if (!dirty && !publish) return;
   if (publish && !confirm(dirty ? '保存修改并开始编译发布新版本？\n编译约需 5~10 分钟，完成后用户会收到更新提示。' : '配置没有修改，确定直接编译发布新版本吗？')) return;
@@ -698,9 +882,13 @@ async function loadRelease(quiet) {
     if (u.text) { const j = JSON.parse(u.text); h += `<div>update.json：<b>v${esc(j.versionName)}</b>（versionCode ${j.versionCode}）${j.size ? ' · ' + esc(j.size) : ''}${j.force ? ' · <span class="tag bad">强制更新</span>' : ''}</div>` }
     else h += '<div>仓库中还没有 update.json（首次发布后自动生成）</div>';
     if (rel) {
-      const apk = (rel.assets || []).find(a => a.name.endsWith('.apk'));
+      const apks = (rel.assets || []).filter(a => a.name.endsWith('.apk'));
+      // 优先给 universal（所有手机都能装）；旧版本的 Release 只有一个 APK
+      const apk = apks.find(a => /universal/i.test(a.name)) || apks.find(a => !/(arm64-v8a|armeabi-v7a|x86_64|x86)\.apk$/i.test(a.name)) || apks[0];
+      const abis = apks.filter(a => a !== apk);
       h += `<div style="margin-top:6px">最新 Release：<b>${esc(rel.name || rel.tag_name)}</b> · ${ago(Math.floor(new Date(rel.published_at) / 1000))}</div>`;
       if (apk) h += `<div class="row" style="margin-top:10px"><a class="btn pri" href="${apk.browser_download_url}" target="_blank">⬇ 下载 APK（${(apk.size / 1048576).toFixed(1)} MB）</a><a class="btn" href="${rel.html_url}" target="_blank">Release 页面</a></div>`;
+      if (abis.length) h += `<div class="meta" style="margin-top:8px">按 CPU 分包（略小一点，不确定就用上面的通用包）：${abis.map(a => `<a href="${a.browser_download_url}" target="_blank">${esc((a.name.match(/(arm64-v8a|armeabi-v7a|x86_64|x86)\.apk$/i) || [, a.name])[1])}</a>`).join(' · ')}</div>`;
     } else h += '<div style="margin-top:6px">还没有发布过 Release</div>';
     $('#relInfo').innerHTML = h;
     if (!quiet) loadRuns();

@@ -221,4 +221,41 @@ class MockServerTest {
         assertTrue(!UpdateLogic.md5Matches(f, info.md5))
         f.delete()
     }
+
+    // ---------- v1.1 ----------
+
+    @Test
+    fun parseApiWithRefererHeaderAndNestedJsonPath(): Unit = runBlocking {
+        need()
+        val target = "$base/parse2/?url=" + java.net.URLEncoder.encode("https://page.example/v/1.html", "UTF-8")
+        // 不带 Referer：403
+        val code = (URL(target).openConnection() as HttpURLConnection).responseCode
+        assertEquals(403, code)
+        val body = Http.client.getString(target, mapOf("Referer" to "https://ref.example/"))
+        // 默认字段列表里的 data.playurl 能取到
+        val url = com.vplayer.app.player.JsonPick.pick(body)
+        assertEquals("$base/media/hls_ad/index.m3u8", url)
+        assertEquals(url, com.vplayer.app.player.JsonPick.pick(body, "data.playurl"))
+    }
+
+    @Test
+    fun m3u8DownloadSkipsAdSegments(): Unit = runBlocking {
+        need()
+        val dir = tmpDir()
+        raw("/__reset")
+        val d = M3u8Downloader(dir, 3, adRule = com.vplayer.app.player.ad.AdRule()) { _, _, _ -> }
+        val idx = d.download("$base/media/hls_ad/index.m3u8")
+        val segs = dir.listFiles()!!.filter { it.name.startsWith("seg_") }.sortedBy { it.name }
+        assertEquals(6, segs.size)
+        assertEquals(1, d.adResult?.removedSegments)
+        assertArrayEquals(raw("/media/hls/seg3.ts"), segs[3].readBytes())
+        val st = stats()
+        assertEquals(null, st["/media/ad/adv_x91.ts"])   // 广告分片根本没下载
+        assertEquals(1, Regex("#EXT-X-DISCONTINUITY").findAll(idx.readText()).count())
+        // 不开去广告：7 个分片
+        val dir2 = tmpDir()
+        M3u8Downloader(dir2, 3) { _, _, _ -> }.download("$base/media/hls_ad/index.m3u8")
+        assertEquals(7, dir2.listFiles()!!.count { it.name.startsWith("seg_") })
+        dir.deleteRecursively(); dir2.deleteRecursively()
+    }
 }

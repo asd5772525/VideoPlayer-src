@@ -3,6 +3,10 @@ package com.vplayer.app.download
 import com.vplayer.app.data.net.Http
 import com.vplayer.app.data.net.await
 import com.vplayer.app.data.net.getString
+import com.vplayer.app.player.ad.AdFilter
+import com.vplayer.app.player.ad.AdFilterResult
+import com.vplayer.app.player.ad.AdRule
+import com.vplayer.app.util.AppLog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
@@ -22,12 +26,19 @@ import java.util.concurrent.atomic.AtomicLong
  * 1. 解析 master playlist，选择最高码率；解析 media playlist
  * 2. 并发下载 TS / fMP4 分片（失败重试），已完成的分片跳过（断点续传）
  * 3. 下载 AES-128 key 与 EXT-X-MAP，改写为本地相对路径，生成 index.m3u8 供离线播放
+ * 4. [adRule] 非空时先用 [AdFilter] 去掉插播广告分片（与在线播放同一套规则），广告分片不会被下载
  */
 class M3u8Downloader(
     private val dir: File,
     private val threads: Int,
+    private val headers: Map<String, String> = emptyMap(),
+    private val adRule: AdRule? = null,
     private val onProgress: (segDone: Int, segTotal: Int, bytes: Long) -> Unit,
 ) {
+    /** 本次去广告结果（未过滤为 null） */
+    var adResult: AdFilterResult? = null
+        private set
+
     private data class Segment(val index: Int, val url: String, val ext: String = "ts")
 
     private fun resolve(base: String, ref: String): String =
@@ -38,7 +49,7 @@ class M3u8Downloader(
     suspend fun download(url: String): File = withContext(Dispatchers.IO) {
         dir.mkdirs()
         var playlistUrl = url
-        var text = Http.client.getString(playlistUrl)
+        var text = Http.client.getString(playlistUrl, headers)
         if (!text.contains("#EXTM3U")) throw IOException("不是有效的 M3U8")
 
         // master playlist：选最高带宽
@@ -55,7 +66,15 @@ class M3u8Downloader(
                 }
             }
             playlistUrl = resolve(playlistUrl, best ?: throw IOException("未找到子播放列表"))
-            text = Http.client.getString(playlistUrl)
+            text = Http.client.getString(playlistUrl, headers)
+        }
+        if (adRule != null) {
+            val r = AdFilter.filter(text, playlistUrl, adRule)
+            if (r.changed) {
+                adResult = r
+                text = r.text
+                AppLog.i("ad", "下载去除 ${r.removedSegments} 个插播分片（${r.removedSeconds}s）")
+            }
         }
 
         // 解析分片 / key / map，同时生成本地 playlist
@@ -145,7 +164,9 @@ class M3u8Downloader(
         repeat(5) { attempt ->
             try {
                 val tmp = File(f.path + ".tmp")
-                val resp = Http.client.newCall(Request.Builder().url(url).build()).await()
+                val resp = Http.client.newCall(
+                    Request.Builder().url(url).apply { headers.forEach { (k, v) -> if (k.isNotBlank()) header(k, v) } }.build()
+                ).await()
                 resp.use {
                     if (!it.isSuccessful) throw IOException("HTTP ${it.code}")
                     val body = it.body ?: throw IOException("空响应")

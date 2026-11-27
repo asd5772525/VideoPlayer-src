@@ -78,9 +78,12 @@ def test_source(api):
         return -1, str(e)[:120]
 
 
-def test_parse(url):
+def test_parse(url, headers=None):
+    # 带上解析接口配置的请求头（Referer / User-Agent），和 App 里的请求保持一致
+    h = {"User-Agent": UA, "Range": "bytes=0-1023"}
+    h.update({str(k): str(v) for k, v in (headers or {}).items() if k and v})
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": UA, "Range": "bytes=0-1023"})
+        req = urllib.request.Request(url, headers=h)
         start = time.time()
         with urllib.request.urlopen(req, timeout=TIMEOUT, context=CTX) as r:
             r.read(1024)
@@ -115,7 +118,8 @@ def main():
 
     results = {}
     with cf.ThreadPoolExecutor(max_workers=16) as ex:
-        futs = {ex.submit(test_source if kind == "sources" else test_parse, url): (kind, url) for kind, url, _ in jobs}
+        futs = {(ex.submit(test_source, url) if kind == "sources" else ex.submit(test_parse, url, item.get("headers"))): (kind, url)
+                for kind, url, item in jobs}
         for f in cf.as_completed(futs):
             results[futs[f]] = f.result()
 

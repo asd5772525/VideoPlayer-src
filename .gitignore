@@ -10,3 +10,4 @@ build/
 *.jks
 *.keystore
 !debug.keystore
+.kotlin/

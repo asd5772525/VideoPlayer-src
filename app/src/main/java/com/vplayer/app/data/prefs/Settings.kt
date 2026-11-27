@@ -11,11 +11,15 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.vplayer.app.data.config.PlayerDefaults
+import com.vplayer.app.util.AppLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 
@@ -45,6 +49,8 @@ data class AppSettings(
     val dismissedNotice: String = "",
     val lastUpdateCheck: Long = 0,
     val lastHealthCheck: Long = 0,
+    val adFilter: Boolean = true,      // 去除插播广告（M3U8）
+    val autoFailover: Boolean = true,  // 播放失败 / 卡顿时自动换线
 )
 
 /**
@@ -77,6 +83,8 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope, pr
         val dismissedNotice = stringPreferencesKey("dismissed_notice")
         val lastUpdateCheck = longPreferencesKey("last_update_check")
         val lastHealthCheck = longPreferencesKey("last_health_check")
+        val adFilter = booleanPreferencesKey("ad_filter")
+        val autoFailover = booleanPreferencesKey("auto_failover")
     }
 
     private val d = defaults
@@ -106,10 +114,19 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope, pr
             dismissedNotice = p[K.dismissedNotice] ?: "",
             lastUpdateCheck = p[K.lastUpdateCheck] ?: 0L,
             lastHealthCheck = p[K.lastHealthCheck] ?: 0L,
+            adFilter = p[K.adFilter] ?: true,
+            autoFailover = p[K.autoFailover] ?: true,
         )
     }
 
-    val state: StateFlow<AppSettings> = flow.stateIn(scope, SharingStarted.Eagerly, AppSettings(
+    private val _loaded = MutableStateFlow(false)
+    /** DataStore 是否已经读到真实值（之前 [state] 只是默认值）。应用锁要等它为 true 才决定显示什么，避免闪出首页 */
+    val loaded: StateFlow<Boolean> = _loaded
+
+    val state: StateFlow<AppSettings> = flow
+        .catch { e -> AppLog.e("settings", "读取设置失败，使用默认值", e); emit(AppSettings()) }
+        .onEach { _loaded.value = true }
+        .stateIn(scope, SharingStarted.Eagerly, AppSettings(
         directFirst = d.directFirst, autoSpeedTest = d.autoSpeedTest, hwDecode = d.hwDecode,
         preloadNext = d.preloadNext, bufferSeconds = d.bufferSeconds, autoNext = d.autoNext,
         defaultSpeed = d.defaultSpeed, longPressSpeed = d.longPressSpeed, skipIntro = d.skipIntro,
@@ -146,4 +163,6 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope, pr
     suspend fun setDismissedNotice(v: String) = set(K.dismissedNotice, v)
     suspend fun setLastUpdateCheck(v: Long) = set(K.lastUpdateCheck, v)
     suspend fun setLastHealthCheck(v: Long) = set(K.lastHealthCheck, v)
+    suspend fun setAdFilter(v: Boolean) = set(K.adFilter, v)
+    suspend fun setAutoFailover(v: Boolean) = set(K.autoFailover, v)
 }

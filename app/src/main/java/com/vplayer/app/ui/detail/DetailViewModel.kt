@@ -9,6 +9,8 @@ import com.vplayer.app.data.model.Source
 import com.vplayer.app.data.model.Vod
 import com.vplayer.app.data.model.vodKey
 import com.vplayer.app.player.SpeedTester
+import com.vplayer.app.player.AdRules
+import com.vplayer.app.player.Resolved
 import com.vplayer.app.player.UrlResolver
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -140,14 +142,17 @@ class DetailViewModel(private val c: AppContainer, private val sourceId: String,
         val (line, ep, pos) = resumeTarget()
         val e = v.lines.getOrNull(line)?.episodes?.getOrNull(ep) ?: return
         val local = c.downloads.completedFile(key, ep)
-        val url = local ?: if (UrlResolver.isDirect(e.url)) e.url else c.resolver.cached(e.url)
-            ?: runCatching { c.resolver.resolve(e.url) }.getOrNull() ?: return
+        val src = _source.value
+        val r = if (local != null) Resolved(local)
+        else runCatching { c.resolver.resolveFull(e.url, src, v.lines.getOrNull(line)?.name) }.getOrNull() ?: return
+        val url = r.url
+        val adRule = if (local != null) null else AdRules.effective(src?.adFilter, c.settings.current().adFilter)
         var startPos = pos
         if (startPos == 0L) {
             val intro = c.db.playbackDao().showPref(key)?.introSec ?: c.settings.current().skipIntro
             startPos = intro * 1000L
         }
-        withContext(Dispatchers.Main) { c.player.prewarm("$key|$line|$ep", url, startPos) }
+        withContext(Dispatchers.Main) { c.player.prewarm("$key|$line|$ep", url, startPos, r.headers, adRule) }
     }
 
     fun toggleFav() = viewModelScope.launch {

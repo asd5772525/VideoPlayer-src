@@ -6,6 +6,8 @@ import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import com.vplayer.app.data.net.Http
+import com.vplayer.app.util.AppLog
+import com.vplayer.app.util.CrashLog
 import kotlinx.coroutines.launch
 
 class App : Application(), ImageLoaderFactory {
@@ -14,6 +16,9 @@ class App : Application(), ImageLoaderFactory {
 
     override fun onCreate() {
         super.onCreate()
+        // 先装崩溃日志，后续初始化里的崩溃也能记下来
+        CrashLog.install(this)
+        AppLog.init(this)
         Http.init(this)
         container = AppContainer(this)
         // 非关键路径：恢复未完成下载、清理过期缓存

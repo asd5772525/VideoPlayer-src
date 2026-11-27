@@ -16,8 +16,16 @@ import com.vplayer.app.data.db.ShowPrefEntity
 import com.vplayer.app.data.model.Source
 import com.vplayer.app.data.model.Vod
 import com.vplayer.app.data.model.vodKey
+import com.vplayer.app.player.AdRules
+import com.vplayer.app.player.Failover
+import com.vplayer.app.player.HoldSeek
+import com.vplayer.app.player.Resolved
+import com.vplayer.app.player.ad.AdRule
+import com.vplayer.app.util.AppLog
+import androidx.media3.exoplayer.SeekParameters
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -42,6 +50,9 @@ data class PlayerUiState(
     val longPressSpeed: Float = 3f,
     val isLocal: Boolean = false,
     val isDirect: Boolean = true,
+    val parseName: String = "",
+    /** 长按提示：「快进 3x ▶▶」/「◀◀ 快退 3x」，null = 没在长按 */
+    val holdLabel: String? = null,
 )
 
 /**
@@ -69,6 +80,22 @@ class PlayerViewModel(
     private var source: Source? = null
     private var forceHls = false
     private var currentUrl: String? = null
+    private var currentResolved: Resolved? = null
+
+    /** 给播放页弹 Toast 的一次性消息 */
+    val toasts = MutableSharedFlow<String>(extraBufferCapacity = 8)
+
+    // ---- 自动换线 ----
+    private val triedLines = mutableSetOf<Int>()
+    private val triedParses = mutableSetOf<String>()
+    private var failingOver = false
+    private var stallMs = 0L
+    private val adNotified = mutableSetOf<String>()
+
+    // ---- 长按快进 / 快退 ----
+    private var holdJob: Job? = null
+    private var holdRewind = false
+    private var holdWasPlaying = false
     private var nextPreloaded = false
     private var outroTriggered = false
     private var lastPos = 0L
@@ -80,6 +107,7 @@ class PlayerViewModel(
             when (playbackState) {
                 Player.STATE_READY -> {
                     _state.update { it.copy(loading = false, error = null) }
+                    stallMs = 0
                     maybePreloadNext()
                 }
                 Player.STATE_BUFFERING -> _state.update { it.copy(loading = true) }
@@ -118,18 +146,32 @@ class PlayerViewModel(
                 // 地址没有扩展名但实际是 HLS：改用 HLS 重试一次
                 forceHls = true
                 val pos = player.currentPosition
-                player.setMediaSource(c.player.buildMediaSource(url, "$key|${_state.value.line}|${_state.value.ep}", forceHls = true), pos)
+                player.setMediaSource(
+                    c.player.buildMediaSource(
+                        url, "$key|${_state.value.line}|${_state.value.ep}", forceHls = true,
+                        headers = currentResolved?.headers.orEmpty(), adRule = if (_state.value.isLocal) null else adRule(),
+                    ),
+                    pos,
+                )
                 player.prepare()
                 player.play()
                 return
             }
-            _state.update { it.copy(loading = false, error = "播放失败（${error.errorCodeName}），可重试或切换线路") }
+            AppLog.e("player", "播放失败 ${error.errorCodeName} line=${_state.value.line} ep=${_state.value.ep} url=${url?.take(120)}", error)
+            if (!failover("播放失败（${error.errorCodeName}）")) {
+                _state.update { it.copy(loading = false, error = "播放失败（${error.errorCodeName}），可重试或切换线路") }
+            }
         }
     }
 
     init {
         c.player.inUse = true
         player.addListener(listener)
+        c.player.adListener = { mediaId, r ->
+            if (mediaId.startsWith("$key|") && adNotified.add(mediaId) && mediaId == "$key|${_state.value.line}|${_state.value.ep}") {
+                toasts.tryEmit("已去除插播广告 ${r.removedSegments} 段（约 ${r.removedSeconds.toInt()} 秒）")
+            }
+        }
         viewModelScope.launch {
             val s = c.settings.current()
             val pref = c.db.playbackDao().showPref(key)
@@ -159,6 +201,16 @@ class PlayerViewModel(
             val pos = player.currentPosition
             if (dur > 0 && dur != C.TIME_UNSET) { lastDur = dur; lastPos = pos }
             if (++n % 10 == 0 && player.isPlaying) saveProgress() // 每 5 秒保存
+            // 卡顿检测：想播但一直在缓冲超过 8 秒 → 自动换线 / 换解析
+            val st0 = _state.value
+            val stalled = player.playbackState == Player.STATE_BUFFERING && player.playWhenReady &&
+                holdJob == null && currentUrl != null && !st0.isLocal && st0.error == null
+            stallMs = if (stalled) stallMs + 500 else 0
+            if (stallMs >= HoldSeek.STALL_FAILOVER_MS) {
+                stallMs = 0
+                AppLog.w("player", "卡顿超过 8 秒 line=${st0.line} ep=${st0.ep}")
+                failover("卡顿超过 8 秒")
+            }
             // 跳过片尾
             val outro = _state.value.outroSec
             if (outro > 0 && dur > 0 && player.isPlaying && !outroTriggered && pos >= dur - outro * 1000L) {
@@ -181,7 +233,12 @@ class PlayerViewModel(
         if (hasNext()) playEpisode(st.line, st.ep + 1)
     }
 
-    fun playEpisode(line: Int, ep: Int, fromStart: Boolean = false) {
+    /**
+     * @param startAtMs 指定起播位置（自动换线时保持进度）
+     * @param auto true = 自动换线触发，不清空“已尝试”记录
+     */
+    fun playEpisode(line: Int, ep: Int, fromStart: Boolean = false, startAtMs: Long? = null, auto: Boolean = false) {
+        if (!auto) { triedLines.clear(); triedParses.clear() }
         playJob?.cancel()
         playJob = viewModelScope.launch {
             val prev = _state.value
@@ -195,36 +252,51 @@ class PlayerViewModel(
             nextPreloaded = false
             outroTriggered = false
             forceHls = false
+            currentResolved = null
             val s = c.settings.current()
             val saved = if (!fromStart && s.rememberProgress) c.db.playbackDao().progress(key, ep) else null
             val savedPos = if (saved != null && saved.duration > 0 && saved.position in 5_000 until saved.duration - 10_000) saved.position else 0L
-            var startPos = savedPos
+            var startPos = startAtMs ?: savedPos
             val intro = _state.value.introSec
             if (startPos == 0L && intro > 0) startPos = intro * 1000L
+            stallMs = 0
 
             player.pauseAtEndOfMediaItems = !_state.value.autoNext
-            if (c.player.preparedKey == mediaKey && player.mediaItemCount > 0) {
+            if (!auto && c.player.preparedKey == mediaKey && player.mediaItemCount > 0) {
                 // 详情页已预热：直接起播
                 currentUrl = c.player.preparedUrl
+                currentResolved = episode?.url?.let { c.resolver.cachedResolved(it) } ?: currentUrl?.let { Resolved(it) }
+                _state.update { it.copy(isDirect = currentResolved?.parse == null, parseName = currentResolved?.parse?.name ?: "") }
                 if (fromStart) player.seekTo(0)
                 else if (kotlin.math.abs(player.currentPosition - startPos) > 3000) player.seekTo(startPos)
                 player.playWhenReady = true
             } else {
                 val local = localPath?.takeIf { ep == startEp && line == startLine }
                     ?: c.downloads.completedFile(key, ep)
-                val url = local ?: try {
-                    c.resolver.resolve(episode?.url ?: "")
+                val lineName = vod?.lines?.getOrNull(line)?.name
+                val resolved = if (local != null) Resolved(local) else try {
+                    c.resolver.resolveFull(episode?.url ?: "", source, lineName, exclude = triedParses)
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
                 } catch (e: Exception) {
-                    _state.update { it.copy(loading = false, error = "解析失败：${e.message}") }
+                    AppLog.w("parse", "解析失败 line=$line ep=$ep：${e.message}")
+                    if (!failover("解析失败")) _state.update { it.copy(loading = false, error = "解析失败：${e.message}") }
                     return@launch
                 }
+                val url = resolved.url
                 if (url.isBlank()) {
-                    _state.update { it.copy(loading = false, error = "没有可用的播放地址") }
+                    if (!failover("没有可用的播放地址")) _state.update { it.copy(loading = false, error = "没有可用的播放地址") }
                     return@launch
                 }
                 currentUrl = url
-                _state.update { it.copy(isLocal = local != null, isDirect = local != null || url == episode?.url) }
-                player.setMediaSource(c.player.buildMediaSource(url, mediaKey), startPos)
+                currentResolved = resolved
+                _state.update {
+                    it.copy(isLocal = local != null, isDirect = local != null || resolved.parse == null, parseName = resolved.parse?.name ?: "")
+                }
+                player.setMediaSource(
+                    c.player.buildMediaSource(url, mediaKey, headers = resolved.headers, adRule = if (local != null) null else adRule()),
+                    startPos,
+                )
                 player.prepare()
                 player.playWhenReady = true
                 c.player.markPrepared(mediaKey, url)
@@ -245,13 +317,16 @@ class PlayerViewModel(
         val nextEp = st.ep + 1
         val ep = st.vod?.lines?.getOrNull(st.line)?.episodes?.getOrNull(nextEp) ?: return
         viewModelScope.launch {
-            val url = c.downloads.completedFile(key, nextEp)
-                ?: runCatching { c.resolver.resolve(ep.url) }.getOrNull() ?: return@launch
+            val local = c.downloads.completedFile(key, nextEp)
+            val r = if (local != null) Resolved(local)
+            else runCatching { c.resolver.resolveFull(ep.url, source, st.vod.lines.getOrNull(st.line)?.name) }.getOrNull() ?: return@launch
             if (_state.value.ep != st.ep || _state.value.line != st.line) return@launch
             if (player.mediaItemCount > player.currentMediaItemIndex + 1) {
                 player.removeMediaItems(player.currentMediaItemIndex + 1, player.mediaItemCount)
             }
-            player.addMediaSource(c.player.buildMediaSource(url, "$key|${st.line}|$nextEp"))
+            player.addMediaSource(
+                c.player.buildMediaSource(r.url, "$key|${st.line}|$nextEp", headers = r.headers, adRule = if (local != null) null else adRule())
+            )
         }
     }
 
@@ -293,7 +368,116 @@ class PlayerViewModel(
     fun retry() {
         val st = _state.value
         c.player.stop()
-        playEpisode(st.line, st.ep)
+        st.vod?.lines?.getOrNull(st.line)?.episodes?.getOrNull(st.ep)?.url?.let { c.resolver.invalidate(it) }
+        playEpisode(st.line, st.ep, startAtMs = lastPos.takeIf { it > 0 })
+    }
+
+    private fun adRule(): AdRule? = AdRules.effective(source?.adFilter, c.settings.state.value.adFilter)
+
+    /**
+     * 自动换线：先换同一线路的下一个解析接口（当前地址来自解析时），再换下一条线路；保持集数与进度。
+     * @return false = 没有可换的（或已关闭自动换线），由调用方显示错误
+     */
+    private fun failover(reason: String): Boolean {
+        val st = _state.value
+        val vod = st.vod ?: return false
+        if (st.isLocal || failingOver || !c.settings.state.value.autoFailover) return false
+        val lines = vod.lines
+        val pos = player.currentPosition.takeIf { it > 0 } ?: lastPos
+        val curName = lines.getOrNull(st.line)?.name ?: "线路${st.line + 1}"
+        val raw = lines.getOrNull(st.line)?.episodes?.getOrNull(st.ep)?.url ?: return false
+        failingOver = true
+        triedLines += st.line
+        currentResolved?.parse?.let { triedParses += it.id }
+        viewModelScope.launch {
+            try {
+                // 1) 当前地址来自解析接口：换下一个解析
+                if (currentResolved?.parse != null) {
+                    val next = runCatching { c.resolver.resolveFull(raw, source, curName, exclude = triedParses, allowDirect = false) }.getOrNull()
+                    if (next != null && next.parse != null && next.url.isNotBlank()) {
+                        AppLog.i("failover", "$reason → 换解析 ${next.parse.name}")
+                        toasts.tryEmit("$reason，已切换解析「${next.parse.name}」")
+                        switchTo(st.line, st.ep, next, pos)
+                        return@launch
+                    }
+                }
+                // 2) 换下一条线路
+                val target = Failover.nextLine(lines, st.line, st.ep, triedLines)
+                if (target == null) {
+                    AppLog.w("failover", "$reason，所有线路都试过了")
+                    _state.update { it.copy(loading = false, error = "$reason，所有线路都无法播放，可重试或稍后再看") }
+                    return@launch
+                }
+                triedParses.clear()
+                val name = lines[target.first].name
+                AppLog.i("failover", "$reason → 换线路 $curName → $name")
+                toasts.tryEmit("$reason，已自动切换到「$name」")
+                c.resolver.invalidate(raw)
+                playEpisode(target.first, target.second, startAtMs = pos, auto = true)
+            } finally {
+                failingOver = false
+            }
+        }
+        return true
+    }
+
+    private fun switchTo(line: Int, ep: Int, r: Resolved, pos: Long) {
+        val mediaKey = "$key|$line|$ep"
+        currentUrl = r.url
+        currentResolved = r
+        forceHls = false
+        nextPreloaded = false
+        stallMs = 0
+        _state.update { it.copy(loading = true, error = null, isDirect = r.parse == null, parseName = r.parse?.name ?: "") }
+        player.setMediaSource(c.player.buildMediaSource(r.url, mediaKey, headers = r.headers, adRule = adRule()), pos)
+        player.prepare()
+        player.playWhenReady = true
+        player.setPlaybackSpeed(_state.value.speed)
+        c.player.markPrepared(mediaKey, r.url)
+    }
+
+    // ---- 手势 ----
+
+    fun seekBy(deltaMs: Long) {
+        val dur = player.duration.takeIf { it > 0 && it != C.TIME_UNSET } ?: Long.MAX_VALUE
+        player.seekTo((player.currentPosition + deltaMs).coerceIn(0, dur))
+    }
+
+    /** 长按开始：rewind=true 左半屏连续快退，false 右半屏倍速快进 */
+    fun startHold(rewind: Boolean) {
+        if (holdJob != null) return
+        val speed = _state.value.longPressSpeed
+        holdRewind = rewind
+        holdWasPlaying = player.playWhenReady
+        _state.update { it.copy(holdLabel = HoldSeek.label(rewind, speed)) }
+        if (!rewind) {
+            player.setPlaybackSpeed(speed)
+            holdJob = viewModelScope.launch { kotlinx.coroutines.awaitCancellation() }
+            return
+        }
+        // ExoPlayer 不能倒放：暂停后每 200ms 往回跳一段（关键帧附近，seek 更快）
+        player.pause()
+        player.setSeekParameters(SeekParameters.CLOSEST_SYNC)
+        holdJob = viewModelScope.launch {
+            var target = player.currentPosition
+            while (isActive) {
+                target = HoldSeek.nextRewindPos(target, speed)
+                player.seekTo(target)
+                if (target == 0L) break
+                delay(HoldSeek.TICK_MS)
+            }
+        }
+    }
+
+    fun endHold() {
+        val job = holdJob ?: return
+        job.cancel()
+        holdJob = null
+        if (holdRewind) {
+            player.setSeekParameters(SeekParameters.DEFAULT)
+            if (holdWasPlaying) player.play()
+        } else player.setPlaybackSpeed(_state.value.speed)
+        _state.update { it.copy(holdLabel = null) }
     }
 
     /** 保存当前集进度（主线程读取播放器，写库放在 appScope，退出页面也能完成） */
@@ -339,6 +523,8 @@ class PlayerViewModel(
     }
 
     override fun onCleared() {
+        holdJob?.cancel()
+        c.player.adListener = null
         saveProgress()
         player.removeListener(listener)
         c.player.inUse = false

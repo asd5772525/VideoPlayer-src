@@ -126,6 +126,12 @@ fun SettingsScreen(onBack: () -> Unit) {
                 OptionRow("内核", value = "ExoPlayer（Media3）")
                 SwitchRow("硬件解码", s.hwDecode, "关闭后优先软解，兼容性更好但更耗电") { v -> scope.launch { c.settings.setHwDecode(v) } }
                 SwitchRow("预加载下一集", s.preloadNext) { v -> scope.launch { c.settings.setPreloadNext(v) } }
+                SwitchRow("去除插播广告", s.adFilter, "自动识别 M3U8 里插在正片中间的短广告片段（保守策略，最多去掉 20%），播放与下载都生效") { v ->
+                    scope.launch { c.settings.setAdFilter(v) }
+                }
+                SwitchRow("播放失败自动换线", s.autoFailover, "出错或卡顿超过 8 秒时，自动换下一个解析 / 线路，保留进度") { v ->
+                    scope.launch { c.settings.setAutoFailover(v) }
+                }
                 OptionRow("缓冲时长", value = "${s.bufferSeconds} 秒", onClick = {
                     dlg = Dlg.IntSlider("缓冲时长", s.bufferSeconds, 10..120, "秒") { v -> scope.launch { c.settings.setBufferSeconds(v) } }
                 })

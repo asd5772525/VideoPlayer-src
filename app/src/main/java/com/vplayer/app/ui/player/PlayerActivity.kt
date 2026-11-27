@@ -12,7 +12,12 @@ import androidx.activity.compose.setContent
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import android.widget.Toast
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.launch
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vplayer.app.App
@@ -61,6 +66,13 @@ class PlayerActivity : ComponentActivity() {
                 i.getStringExtra(EXTRA_TITLE),
             ) as T
         })[PlayerViewModel::class.java]
+
+        // 自动换线 / 去广告等提示
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                vm.toasts.collect { Toast.makeText(this@PlayerActivity, it, Toast.LENGTH_SHORT).show() }
+            }
+        }
 
         setContent {
             val settings by c.settings.state.collectAsStateWithLifecycle()

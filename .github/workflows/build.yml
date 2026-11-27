@@ -47,11 +47,18 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      # Gradle 依赖 / 构建缓存：只有默认分支的运行会写缓存，其它分支和 tag 只读（避免缓存被挤爆）
       - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) }}
+          # 可选：配置 GRADLE_ENCRYPTION_KEY Secret 后，配置缓存（configuration cache）也能跨运行复用
+          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
 
       - name: 计算版本号 / 是否发布
         id: meta
         shell: bash
+        env:
+          EVENT_BEFORE: ${{ github.event.before }}
         run: |
           RUN=${{ github.run_number }}
           VERSION_CODE=$((100 + RUN))
@@ -67,20 +74,31 @@ jobs:
             TAG="v${VERSION_NAME}"
             if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
               RELEASE="${{ inputs.release }}"
-            elif git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" 2>/dev/null | grep -qx 'config.json'; then
-              # 在 GitHub 网页上直接改了 config.json：自动发布，已安装的 App 通过 OTA 收到新配置
-              RELEASE=true
+            else
+              # 在 GitHub 网页上直接改了 config.json：自动发布，已安装的 App 通过 OTA 收到新配置。
+              # 先把文件列表存进变量再 grep：直接 `git diff | grep -q` 在 pipefail 下，grep 提前退出会让 git diff
+              # 收到 SIGPIPE、整条管道返回 141，被误判为“没改”。
+              # 首次推送（before 为 000…，或 before 不在本地历史里）不自动发布：那时通常还没配置签名 Secret。
+              CHANGED=""
+              if [[ -n "$EVENT_BEFORE" && ! "$EVENT_BEFORE" =~ ^0+$ ]] && git cat-file -e "${EVENT_BEFORE}^{commit}" 2>/dev/null; then
+                CHANGED=$(git diff --name-only "$EVENT_BEFORE" "$GITHUB_SHA" || true)
+              fi
+              if grep -qx 'config.json' <<< "$CHANGED"; then
+                RELEASE=true
+              fi
             fi
           fi
           BRANCH="${{ github.event.repository.default_branch }}"
           REPO="${{ github.repository }}"
           UPDATE_URLS="https://raw.githubusercontent.com/${REPO}/${BRANCH}/update.json,https://cdn.jsdelivr.net/gh/${REPO}@${BRANCH}/update.json,https://fastly.jsdelivr.net/gh/${REPO}@${BRANCH}/update.json,https://github.com/${REPO}/releases/latest/download/update.json"
-          echo "code=$VERSION_CODE" >> $GITHUB_OUTPUT
-          echo "name=$VERSION_NAME" >> $GITHUB_OUTPUT
-          echo "tag=$TAG" >> $GITHUB_OUTPUT
-          echo "release=$RELEASE" >> $GITHUB_OUTPUT
-          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
-          echo "update_urls=$UPDATE_URLS" >> $GITHUB_OUTPUT
+          {
+            echo "code=$VERSION_CODE"
+            echo "name=$VERSION_NAME"
+            echo "tag=$TAG"
+            echo "release=$RELEASE"
+            echo "branch=$BRANCH"
+            echo "update_urls=$UPDATE_URLS"
+          } >> "$GITHUB_OUTPUT"
           echo "版本 $VERSION_NAME ($VERSION_CODE)  发布: $RELEASE"
 
       - name: 解码签名文件（未配置 Secrets 时使用 debug 签名）
@@ -100,26 +118,49 @@ jobs:
               echo "::error::签名文件无法打开：KEYSTORE_PASSWORD 或 KEY_ALIAS 不正确"
               exit 1
             fi
-            echo "KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> $GITHUB_ENV
+            echo "KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
             echo "使用正式签名"
           else
             echo "::warning::未配置 KEYSTORE_BASE64，使用 debug 签名（不同机器构建的 debug 签名不同，OTA 覆盖安装会失败，请尽快配置正式签名）"
           fi
 
-      - name: 构建 Release APK
+      - name: 构建 Release APK（按 CPU 分包 + 通用包）
         shell: bash
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          VNAME: ${{ steps.meta.outputs.name }}
+          VCODE: ${{ steps.meta.outputs.code }}
+          UPDATE_URLS: ${{ steps.meta.outputs.update_urls }}
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon assembleRelease \
-            -PversionCode=${{ steps.meta.outputs.code }} \
-            -PversionName=${{ steps.meta.outputs.name }} \
-            -PupdateUrls="${{ steps.meta.outputs.update_urls }}"
+          # 只跑 assembleRelease：不编 debug、不跑单元测试，跳过 lintVital（本地默认仍检查）
+          ./gradlew --no-daemon --build-cache assembleRelease \
+            -Pvp.skipLintVital=true \
+            -PversionCode="$VCODE" \
+            -PversionName="$VNAME" \
+            -PupdateUrls="$UPDATE_URLS"
+          OUT=app/build/outputs/apk/release
           mkdir -p dist
-          cp app/build/outputs/apk/release/app-release.apk "dist/VideoPlayer-v${{ steps.meta.outputs.name }}.apk"
+          n=0
+          for abi in universal arm64-v8a armeabi-v7a x86_64; do
+            f="$OUT/app-$abi-release.apk"
+            if [ -f "$f" ]; then
+              cp "$f" "dist/VideoPlayer-v${VNAME}-${abi}.apk"
+              n=$((n + 1))
+            fi
+          done
+          # 兼容关闭分包（-Pvp.abiSplit=false）时只有 app-release.apk 的情况
+          if [ -f "$OUT/app-release.apk" ]; then
+            cp "$OUT/app-release.apk" "dist/VideoPlayer-v${VNAME}-universal.apk"
+            n=$((n + 1))
+          fi
+          if [ ! -f "dist/VideoPlayer-v${VNAME}-universal.apk" ]; then
+            echo "::error::没有找到 universal APK（$OUT 下的文件：$(find "$OUT" -maxdepth 1 -name '*.apk' -printf '%f ' 2>/dev/null || true)）"
+            exit 1
+          fi
+          echo "共 $n 个 APK"
           ls -la dist
 
       - uses: actions/upload-artifact@v4
@@ -133,11 +174,11 @@ jobs:
         env:
           INPUT_CHANGELOG: ${{ inputs.changelog }}
           INPUT_FORCE: ${{ inputs.force }}
+          VNAME: ${{ steps.meta.outputs.name }}
+          VCODE: ${{ steps.meta.outputs.code }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          REPO: ${{ github.repository }}
         run: |
-          APK="dist/VideoPlayer-v${{ steps.meta.outputs.name }}.apk"
-          export APK_NAME=$(basename "$APK")
-          export MD5=$(md5sum "$APK" | cut -d' ' -f1)
-          export SIZE=$(python3 -c "import os;print('%.1f MB'%(os.path.getsize('$APK')/1048576))")
           if [ -z "$INPUT_CHANGELOG" ]; then
             if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
               INPUT_CHANGELOG=$(git tag -l --format='%(contents:subject)' "$GITHUB_REF_NAME" || true)
@@ -145,18 +186,31 @@ jobs:
             [ -z "$INPUT_CHANGELOG" ] && INPUT_CHANGELOG=$(git log -1 --pretty=%s)
           fi
           export INPUT_CHANGELOG
-          export VCODE=${{ steps.meta.outputs.code }} VNAME=${{ steps.meta.outputs.name }} TAG=${{ steps.meta.outputs.tag }} REPO=${{ github.repository }}
           python3 - <<'PY'
-          import json, os
-          log = [s.strip() for s in os.environ.get("INPUT_CHANGELOG", "").split("|") if s.strip()] or ["优化体验，修复若干问题"]
+          import glob, hashlib, json, os
+          e = os.environ
+          log = [s.strip() for s in e.get("INPUT_CHANGELOG", "").split("|") if s.strip()] or ["优化体验，修复若干问题"]
+          base = f"https://github.com/{e['REPO']}/releases/download/{e['TAG']}/"
+          prefix = f"dist/VideoPlayer-v{e['VNAME']}-"
+          apks = {}
+          for path in sorted(glob.glob(prefix + "*.apk")):
+              abi = path[len(prefix):-len(".apk")]
+              with open(path, "rb") as f:
+                  md5 = hashlib.md5(f.read()).hexdigest()
+              apks[abi] = {"url": base + os.path.basename(path), "md5": md5,
+                           "size": "%.1f MB" % (os.path.getsize(path) / 1048576)}
+          uni = apks["universal"]  # 构建步骤已保证存在
           data = {
-              "versionCode": int(os.environ["VCODE"]),
-              "versionName": os.environ["VNAME"],
-              "apkUrl": f"https://github.com/{os.environ['REPO']}/releases/download/{os.environ['TAG']}/{os.environ['APK_NAME']}",
-              "size": os.environ["SIZE"],
+              "versionCode": int(e["VCODE"]),
+              "versionName": e["VNAME"],
+              # 顶层字段 = 通用包，旧版 App 只认这几个字段
+              "apkUrl": uni["url"],
+              "size": uni["size"],
               "changelog": log,
-              "force": os.environ.get("INPUT_FORCE") == "true",
-              "md5": os.environ["MD5"],
+              "force": e.get("INPUT_FORCE") == "true",
+              "md5": uni["md5"],
+              # 新版 App 按 Build.SUPPORTED_ABIS 选匹配的分包，没有就用 universal
+              "apks": apks,
           }
           json.dump(data, open("dist/update.json", "w", encoding="utf-8"), ensure_ascii=False, indent=2)
           print(json.dumps(data, ensure_ascii=False, indent=2))
