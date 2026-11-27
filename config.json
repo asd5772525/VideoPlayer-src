@@ -20,18 +20,18 @@
       "default": false
     },
     {
-      "key": "smwyqse75b5yz",
-      "name": "仓库",
-      "api": "https://hsckzy888.com/api.php/provide/vod/at/xml/",
+      "key": "smwyqszvzv82g",
+      "name": "xye",
+      "api": "https://xyezy.com/api.php/provide/vod/at/xml/",
       "type": "xml",
       "enabled": true,
       "order": 3,
       "default": false
     },
     {
-      "key": "smwyqszvzv82g",
-      "name": "xye",
-      "api": "https://xyezy.com/api.php/provide/vod/at/xml/",
+      "key": "smwyqse75b5yz",
+      "name": "仓库",
+      "api": "https://hsckzy888.com/api.php/provide/vod/at/xml/",
       "type": "xml",
       "enabled": true,
       "order": 4,
