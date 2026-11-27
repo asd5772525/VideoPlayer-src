@@ -1,5 +1,34 @@
 {
-  "sources": {},
+  "sources": {
+    "https://hsckzy888.com/api.php/provide/vod/at/xml/": {
+      "latency": 162,
+      "ok": true,
+      "lastCheck": 1795769555,
+      "failCount": 0,
+      "error": ""
+    },
+    "https://xyezy.com/api.php/provide/vod/at/xml/": {
+      "latency": 1142,
+      "ok": true,
+      "lastCheck": 1795769555,
+      "failCount": 0,
+      "error": ""
+    },
+    "https://dadiapi.com/api.php/provide/vod/": {
+      "latency": 1035,
+      "ok": true,
+      "lastCheck": 1795769555,
+      "failCount": 0,
+      "error": ""
+    },
+    "https://naixxzy.com/api.php/provide/vod/at/xml/": {
+      "latency": 1301,
+      "ok": true,
+      "lastCheck": 1795769555,
+      "failCount": 0,
+      "error": ""
+    }
+  },
   "parses": {},
-  "updatedAt": 1795743840
+  "updatedAt": 1795769555
 }
