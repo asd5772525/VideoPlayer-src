@@ -26,9 +26,21 @@ object MacCms {
     @Volatile
     var xmlParserFactory: () -> XmlPullParser = { Xml.newPullParser() }
 
+    /** 去掉用户误填在地址里的 ac/pg/t/wd/h/ids 参数，例如 …/vod/?ac=list */
+    fun cleanApi(api: String): String {
+        val u = api.trim()
+        val q = u.indexOf('?')
+        if (q < 0) return u
+        val rest = u.substring(q + 1).split('&')
+            .filter { it.isNotEmpty() && !Regex("^(ac|pg|t|wd|h|ids)=", RegexOption.IGNORE_CASE).containsMatchIn(it) }
+            .joinToString("&")
+        return if (rest.isEmpty()) u.substring(0, q) else u.substring(0, q) + "?" + rest
+    }
+
     fun buildUrl(api: String, vararg params: Pair<String, String?>): String {
-        val sb = StringBuilder(api.trim())
-        var hasQuery = api.contains('?')
+        val base = cleanApi(api)
+        val sb = StringBuilder(base)
+        var hasQuery = base.contains('?')
         for ((k, v) in params) {
             if (v.isNullOrEmpty()) continue
             sb.append(if (hasQuery) '&' else '?')

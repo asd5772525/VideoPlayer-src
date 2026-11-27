@@ -12,6 +12,7 @@
 - 通过 GITHUB_OUTPUT 输出 config_changed / summary
 只用 Python 标准库，无需安装依赖。
 """
+import re
 import concurrent.futures as cf
 import json
 import os
@@ -50,6 +51,9 @@ def save(path, data):
 
 
 def list_url(api):
+    base, _, q = api.strip().partition("?")
+    keep = [x for x in q.split("&") if x and not re.match(r"(?i)^(ac|pg|t|wd|h|ids)=", x)]
+    api = base + ("?" + "&".join(keep) if keep else "")
     return api + ("&" if "?" in api else "?") + "ac=list"
 
 

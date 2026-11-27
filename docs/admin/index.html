@@ -237,6 +237,7 @@ function ago(sec) {
 }
 function hostOf(u) { try { return new URL(u).host } catch (e) { return '' } }
 function isUrl(u) { return /^https?:\/\/[^\s]+$/i.test(String(u || '').trim()) }
+function cleanApi(u) { u = (u || '').trim(); const q = u.indexOf('?'); if (q < 0) return u; const base = u.slice(0, q); const rest = u.slice(q + 1).split('&').filter(x => x && !/^(ac|pg|t|wd|h|ids)=/i.test(x)).join('&'); return rest ? base + '?' + rest : base }
 function detectType(u) { return /\/at\/xml|\.xml(\?|$)/i.test(u) ? 'xml' : 'json' }
 function uid(p) { return p + Date.now().toString(36) + Math.random().toString(36).slice(2, 6) }
 const enc = s => { const b = new TextEncoder().encode(s); let bin = ''; for (let i = 0; i < b.length; i += 0x8000) bin += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000)); return btoa(bin) };
@@ -281,7 +282,7 @@ function normalize(c) {
   c = Object.assign(JSON.parse(JSON.stringify(DEFAULT_CFG)), c || {});
   c.player = Object.assign({}, DEFAULT_CFG.player, c.player || {});
   c.notice = Object.assign({}, DEFAULT_CFG.notice, c.notice || {});
-  c.sources = (c.sources || []).map(s => ({ key: s.key || uid('s'), name: s.name || '', api: s.api || '', type: s.type || detectType(s.api || ''), enabled: s.enabled !== false, order: s.order || 0, default: !!s.default,
+  c.sources = (c.sources || []).map(s => ({ key: s.key || uid('s'), name: s.name || '', api: cleanApi(s.api), type: s.type || detectType(s.api || ''), enabled: s.enabled !== false, order: s.order || 0, default: !!s.default,
     parses: Array.isArray(s.parses) ? s.parses.filter(k => typeof k === 'string' && k) : [],
     lineParses: (s.lineParses && typeof s.lineParses === 'object' && !Array.isArray(s.lineParses)) ? Object.fromEntries(Object.entries(s.lineParses).filter(([n, v]) => n && Array.isArray(v)).map(([n, v]) => [n, v.filter(k => typeof k === 'string' && k)])) : {},
     adFilter: s.adFilter && typeof s.adFilter === 'object' ? normAd(s.adFilter) : null }));
@@ -648,7 +649,7 @@ function openAdd(kind) {
     const url = u.value.trim(), name = $('#a_name').value.trim(), field = isSrc ? 'api' : 'url';
     if (!isUrl(url)) { $('#a_err').textContent = '请填写以 http:// 或 https:// 开头的完整地址'; return }
     if (cfg[kind].some(x => x[field] === url)) { $('#a_err').textContent = '这个地址已经添加过了'; return }
-    cfg[kind].push(isSrc ? { key: uid('s'), name: name || hostOf(url), api: url, type: detectType(url), enabled: true, order: 0, default: cfg.sources.length === 0, parses: [], lineParses: {}, adFilter: null }
+    cfg[kind].push(isSrc ? { key: uid('s'), name: name || hostOf(url), api: cleanApi(url), type: detectType(url), enabled: true, order: 0, default: cfg.sources.length === 0, parses: [], lineParses: {}, adFilter: null }
       : { key: uid('p'), name: name || hostOf(url), url, type: $('#a_ptype').value, enabled: true, order: 0, headers: {}, timeout: 0, jsonPath: '' });
     closeModal(); renderList(kind); refreshBar(); toast('已添加，记得点底部「保存并编译发布」');
   };
@@ -667,7 +668,7 @@ function openBulk(kind) {
       const m = line.match(/https?:\/\/\S+/i); if (!m) { bad++; return }
       const url = m[0].replace(/[,，]$/, ''); let name = line.replace(m[0], '').replace(/[,，$|\s]+/g, ' ').trim();
       if (cfg[kind].some(x => x[field] === url)) { skip++; return }
-      cfg[kind].push(isSrc ? { key: uid('s'), name: name || hostOf(url), api: url, type: detectType(url), enabled: true, order: 0, default: cfg.sources.length === 0, parses: [], lineParses: {}, adFilter: null }
+      cfg[kind].push(isSrc ? { key: uid('s'), name: name || hostOf(url), api: cleanApi(url), type: detectType(url), enabled: true, order: 0, default: cfg.sources.length === 0, parses: [], lineParses: {}, adFilter: null }
         : { key: uid('p'), name: name || hostOf(url), url, type: 'json', enabled: true, order: 0, headers: {}, timeout: 0, jsonPath: '' });
       add++;
     });
