@@ -6,7 +6,8 @@
 - 对解析接口请求其地址（非 5xx 即视为可用）
 - 结果写入 status.json：latency(ms) / ok / lastCheck / failCount（连续失败次数，成功清零）
 - 连续失败达到 3 次：从 config.json 移除，记录到 removed.json（可在后台页面一键恢复）
-- 播放源按延迟分档（500ms 一档）重新排序，避免抖动导致每次都重新编译
+- 播放源按延迟分档（500ms 一档）重新排序，避免抖动导致每次都改动 config.json
+- v1.2：只保存结果（由 workflow 提交，带 [skip ci]），不会触发编译；专属解析（parses[].owner）和通用解析一样测速
 - 本次全部失败时，先探测一下网络（默认 https://api.github.com，可用环境变量 NET_PROBE_URL 覆盖）：
   网络不通才认为是运行环境问题、不计失败次数；网络正常则照常累计（否则只有一个坏源时永远不会被移除）
 - 通过 GITHUB_OUTPUT 输出 config_changed / summary

@@ -1,17 +1,24 @@
 name: 构建与发布 APK
 
+# 什么时候会编译（v1.2 起）：
+#   1. 后台点「编译发布」/「保存并编译发布」 → workflow_dispatch（release=true，发布 Release + OTA）
+#   2. 推送 v* 标签（例如 v1.2.0）              → 编译并发布
+#   3. 在 Actions 页面手动 Run workflow         → 按勾选决定是否发布
+#   4. 推送到 main 且改了 App 代码 / 构建脚本   → 只编译检查（产物在 Actions 里），不发布、不推 OTA
+# 不会编译：只改了 config.json / status.json / removed.json / update.json / docs / README / scripts（测速、仅保存都属于这种）。
 on:
   push:
     branches: [main]
     tags: ['v*']
-    paths-ignore:
-      - 'README.md'
-      - 'docs/**'
-      - 'update.json'
-      - 'status.json'
-      - 'removed.json'
-      - 'scripts/**'
-      - '.github/workflows/source-check.yml'
+    # 路径过滤对标签推送不生效（GitHub 规则），所以标签总会编译
+    paths:
+      - 'app/**'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'gradle.properties'
+      - 'gradle/**'
+      - 'gradlew'
+      - '.github/workflows/build.yml'
   workflow_dispatch:
     inputs:
       release:
@@ -57,13 +64,13 @@ jobs:
       - name: 计算版本号 / 是否发布
         id: meta
         shell: bash
-        env:
-          EVENT_BEFORE: ${{ github.event.before }}
         run: |
           RUN=${{ github.run_number }}
           VERSION_CODE=$((100 + RUN))
           BASE=$(git tag -l 'v[0-9]*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 | sed 's/^v//' || true)
           [ -z "$BASE" ] && BASE="1.0.0"
+          # 只有两种情况发布 Release + 更新 update.json：推送 v* 标签；手动 / 后台触发且 release=true。
+          # 普通推送（改了 App 代码）只编译检查，不发布 —— 配置改动不再自动发布（v1.2）。
           RELEASE=false
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             RELEASE=true
@@ -74,18 +81,6 @@ jobs:
             TAG="v${VERSION_NAME}"
             if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
               RELEASE="${{ inputs.release }}"
-            else
-              # 在 GitHub 网页上直接改了 config.json：自动发布，已安装的 App 通过 OTA 收到新配置。
-              # 先把文件列表存进变量再 grep：直接 `git diff | grep -q` 在 pipefail 下，grep 提前退出会让 git diff
-              # 收到 SIGPIPE、整条管道返回 141，被误判为“没改”。
-              # 首次推送（before 为 000…，或 before 不在本地历史里）不自动发布：那时通常还没配置签名 Secret。
-              CHANGED=""
-              if [[ -n "$EVENT_BEFORE" && ! "$EVENT_BEFORE" =~ ^0+$ ]] && git cat-file -e "${EVENT_BEFORE}^{commit}" 2>/dev/null; then
-                CHANGED=$(git diff --name-only "$EVENT_BEFORE" "$GITHUB_SHA" || true)
-              fi
-              if grep -qx 'config.json' <<< "$CHANGED"; then
-                RELEASE=true
-              fi
             fi
           fi
           BRANCH="${{ github.event.repository.default_branch }}"

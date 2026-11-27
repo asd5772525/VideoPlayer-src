@@ -4,6 +4,11 @@ import com.vplayer.app.data.config.AdFilterCfg
 import com.vplayer.app.data.model.ParseApi
 import com.vplayer.app.data.model.Source
 import com.vplayer.app.player.ad.AdRule
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.selects.select
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -11,16 +16,57 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 
-/** 解析接口排序：线路绑定 → 源绑定 → 其余（已按测速排序），去重；绑定了但已删除 / 停用的 key 忽略 */
+/**
+ * 解析接口排序（v1.2）：线路绑定 → 源绑定 → 本源专属解析（其余）→ 通用解析（已按测速排序），去重。
+ * - 专属解析（ownerId 非空）只给它所属的源用，别的源看不到
+ * - 专属解析只写在 lineParses 里（限定了线路）的，只在那些线路上用
+ * - 绑定了但已删除 / 停用的 key 忽略
+ */
 object ParseOrder {
     fun forSource(all: List<ParseApi>, source: Source?, lineName: String?): List<ParseApi> {
-        if (source == null) return all
-        val byKey = all.filter { it.key.isNotBlank() }.associateBy { it.key }
+        val usable = all.filter { it.ownerId.isEmpty() || (source != null && it.ownerId == source.id) }
+        if (source == null) return usable
+        val byKey = usable.filter { it.key.isNotBlank() }.associateBy { it.key }
         val lineKeys = lineName?.let { n ->
             source.lineParses[n] ?: source.lineParses.entries.firstOrNull { it.key.trim().equals(n.trim(), true) }?.value
         }.orEmpty()
         val bound = (lineKeys + source.parseKeys).mapNotNull { byKey[it] }
-        return (bound + all).distinctBy { it.id }
+        val lineOnly = source.lineParses.values.flatten().toSet() - source.parseKeys.toSet()
+        val owned = usable.filter { it.ownerId.isNotEmpty() && it.key !in lineOnly }
+        val global = usable.filter { it.ownerId.isEmpty() }
+        return (bound + owned + global).distinctBy { it.id }
+    }
+}
+
+/**
+ * 解析竞速：按顺序同时跑 [width] 个候选，谁先返回非空结果用谁，其余取消；
+ * 某个失败了就补上下一个（滑动窗口），全部失败返回 null。width = 1 就是原来的逐个尝试。
+ */
+object ParseRace {
+    suspend fun <T, R : Any> first(candidates: List<T>, width: Int, block: suspend (T) -> R?): Pair<T, R>? = coroutineScope {
+        if (candidates.isEmpty()) return@coroutineScope null
+        val w = width.coerceAtLeast(1)
+        val running = mutableListOf<Deferred<Pair<T, R?>>>()
+        var next = 0
+        fun launchNext() {
+            val c = candidates[next++]
+            running += async {
+                val r = try { block(c) } catch (e: CancellationException) { throw e } catch (e: Exception) { null }
+                c to r
+            }
+        }
+        while (next < candidates.size && running.size < w) launchNext()
+        while (running.isNotEmpty()) {
+            val (d, res) = select { running.forEach { d -> d.onAwait { d to it } } }
+            running.remove(d)
+            val r = res.second
+            if (r != null) {
+                running.forEach { it.cancel() }
+                return@coroutineScope res.first to r
+            }
+            if (next < candidates.size) launchNext()
+        }
+        null
     }
 }
 

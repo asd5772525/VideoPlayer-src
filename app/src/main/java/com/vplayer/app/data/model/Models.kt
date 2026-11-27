@@ -16,6 +16,7 @@ data class Source(
     val parseKeys: List<String> = emptyList(),            // 绑定的解析 key（仅内置源）
     val lineParses: Map<String, List<String>> = emptyMap(), // 线路名 → 解析 key
     val adFilter: AdFilterCfg? = null,
+    val kernel: String = "",                                 // 首选内核（仅内置源，可空）
 ) {
     val isXml: Boolean get() = type.equals("xml", true) || api.contains("/at/xml")
 }
@@ -32,6 +33,8 @@ data class ParseApi(
     val headers: Map<String, String> = emptyMap(),
     val timeoutSec: Int = 0,
     val jsonPath: String = "",
+    /** 专属播放源的 id（"b:<源key>"）；空 = 通用解析，所有源都能用 */
+    val ownerId: String = "",
 )
 
 @Serializable

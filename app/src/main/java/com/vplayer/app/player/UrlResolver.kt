@@ -68,22 +68,25 @@ class UrlResolver(
         if (exclude.isEmpty()) cachedResolved(url)?.let { return@withContext it }
         val s = settings.current()
         if (allowDirect && s.directFirst && isDirect(url)) return@withContext Resolved(url)
-        val ordered = ParseOrder.forSource(sources.parses.value.map { it.parse }, source, lineName)
-        for (p in ordered) {
-            if (p.id in exclude) continue
-            val got = try {
-                viaParse(p, url)
+        val ordered = ParseOrder.forSource(sources.parses.value.map { it.parse }, source, lineName).filter { it.id !in exclude }
+        val t0 = System.currentTimeMillis()
+        // 前两个解析同时请求，先返回有效地址的胜出（设置里可关闭）
+        val width = if (s.parseRace) 2 else 1
+        val won = ParseRace.first(ordered, width) { p ->
+            try {
+                viaParse(p, url)?.takeIf { it.isNotBlank() }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
                 AppLog.w("parse", "${p.name} 失败：${e.message}")
                 null
             }
-            if (!got.isNullOrBlank()) {
-                val r = Resolved(got, p)
-                cache[url] = Cached(r, System.currentTimeMillis())
-                return@withContext r
-            }
+        }
+        if (won != null) {
+            val r = Resolved(won.second, won.first)
+            AppLog.i("parse", "解析成功：${won.first.name} ${System.currentTimeMillis() - t0}ms${if (width > 1) "（竞速）" else ""}")
+            cache[url] = Cached(r, System.currentTimeMillis())
+            return@withContext r
         }
         if (exclude.isNotEmpty()) throw IOException("没有更多可用的解析接口")
         if (allowDirect && isDirect(url)) return@withContext Resolved(url)

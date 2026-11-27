@@ -51,6 +51,8 @@ import com.vplayer.app.ui.me.BackTitle
 import com.vplayer.app.ui.theme.Accent
 import com.vplayer.app.ui.theme.Bad
 import com.vplayer.app.ui.theme.Ok
+import com.vplayer.app.player.engine.Kernel
+import com.vplayer.app.player.engine.PlaybackProfiles
 import kotlinx.coroutines.launch
 
 private sealed interface Dlg {
@@ -112,8 +114,10 @@ fun SettingsScreen(onBack: () -> Unit) {
             Group("解析接口") {
                 parses.forEach { item ->
                     val p = item.parse
+                    val owner = p.ownerId.takeIf { it.isNotEmpty() }?.let { id -> sources.firstOrNull { it.source.id == id }?.source?.name ?: "已移除的源" }
                     OptionRow(
-                        p.name + (if (p.builtIn) " · 内置" else " · 本地") + " · " + (if (p.type == "webview") "网页嗅探" else "JSON"),
+                        p.name + (if (p.builtIn) " · 内置" else " · 本地") + " · " + (if (p.type == "webview") "网页嗅探" else "JSON") +
+                            (owner?.let { " · 仅「$it」" } ?: ""),
                         p.url, onClick = { dlg = Dlg.EditParse(item) },
                         leading = { StatusDot(if (item.lastCheck > 0) item.ok else null) },
                     ) { LatencyBadge(item.latencyMs, item.lastCheck > 0) }
@@ -121,20 +125,76 @@ fun SettingsScreen(onBack: () -> Unit) {
                 OptionRow("＋ 添加解析接口", "格式：解析地址前缀，播放地址会拼接在后面", onClick = { dlg = Dlg.AddParse })
                 SwitchRow("直链优先（m3u8/mp4 不走解析）", s.directFirst) { v -> scope.launch { c.settings.setDirectFirst(v) } }
                 SwitchRow("自动测速选择最快线路", s.autoSpeedTest) { v -> scope.launch { c.settings.setAutoSpeedTest(v) } }
+                SwitchRow("解析竞速", s.parseRace, "前两个解析接口同时请求，谁先返回能用的地址就用谁（更快，多一次请求）") { v ->
+                    scope.launch { c.settings.setParseRace(v) }
+                }
             }
             Group("播放器") {
-                OptionRow("内核", value = "ExoPlayer（Media3）")
+                val kernelNow = Kernel.of(s.kernel)
+                OptionRow("播放内核", "自动 = 先用 ExoPlayer，遇到它播不了的格式自动换 IJK") {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(Kernel.AUTO, Kernel.EXO, Kernel.IJK, Kernel.SYSTEM).forEach { k ->
+                            Text(if (k == Kernel.SYSTEM) "系统" else if (k == Kernel.EXO) "Exo" else k.label, fontSize = 12.sp,
+                                color = if (k == kernelNow) Accent else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.clickable { scope.launch { c.settings.setKernel(k.id) } }.padding(2.dp))
+                        }
+                    }
+                }
+                var statsVer by remember { mutableStateOf(0) }
+                val stats = remember(statsVer) { c.kernelStats.summary() }
+                if (stats.isNotEmpty()) OptionRow(
+                    "起播速度对比（本机实测，点击清空）",
+                    stats.joinToString("\n") { "${it.kernel.label}：平均 ${fmtMs(it.avgMs)}，最快 ${fmtMs(it.bestMs)}，最近 ${fmtMs(it.lastMs)}（${it.count} 次）" },
+                    onClick = { c.kernelStats.reset(); statsVer++; Toast.makeText(ctx, "已清空", Toast.LENGTH_SHORT).show() },
+                )
                 SwitchRow("硬件解码", s.hwDecode, "关闭后优先软解，兼容性更好但更耗电") { v -> scope.launch { c.settings.setHwDecode(v) } }
-                SwitchRow("预加载下一集", s.preloadNext) { v -> scope.launch { c.settings.setPreloadNext(v) } }
-                SwitchRow("去除插播广告", s.adFilter, "自动识别 M3U8 里插在正片中间的短广告片段（保守策略，最多去掉 20%），播放与下载都生效") { v ->
+                SwitchRow("去除插播广告", s.adFilter, "自动识别 M3U8 里插在正片中间的短广告片段（保守策略，最多去掉 20%），播放与下载都生效；系统播放器内核不支持") { v ->
                     scope.launch { c.settings.setAdFilter(v) }
                 }
                 SwitchRow("播放失败自动换线", s.autoFailover, "出错或卡顿超过 8 秒时，自动换下一个解析 / 线路，保留进度") { v ->
                     scope.launch { c.settings.setAutoFailover(v) }
                 }
-                OptionRow("缓冲时长", value = "${s.bufferSeconds} 秒", onClick = {
-                    dlg = Dlg.IntSlider("缓冲时长", s.bufferSeconds, 10..120, "秒") { v -> scope.launch { c.settings.setBufferSeconds(v) } }
-                })
+            }
+            Group("加载策略（影响起播速度和卡顿）") {
+                OptionRow("预设") {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        PlaybackProfiles.PRESETS.forEach { p ->
+                            Text(p.label.substringBefore("（"), fontSize = 12.sp,
+                                color = if (p.id == s.preset) Accent else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.clickable { scope.launch { c.settings.setPreset(p.id) } }.padding(2.dp))
+                        }
+                    }
+                }
+                val prof = PlaybackProfiles.of(s)
+                OptionRow(PlaybackProfiles.PRESETS.firstOrNull { it.id == s.preset }?.hint ?: "", prof.summary())
+                if (s.preset == "custom") {
+                    fun custom(block: suspend () -> Unit) { scope.launch { c.settings.setPreset("custom"); block() } }
+                    OptionRow("起播缓冲", value = "${s.startMs} 毫秒", onClick = {
+                        dlg = Dlg.IntSlider("起播前至少缓冲", s.startMs, 100..5000, "毫秒") { v -> custom { c.settings.setStartMs(v) } }
+                    })
+                    OptionRow("卡顿后恢复缓冲", value = "${s.rebufferMs} 毫秒", onClick = {
+                        dlg = Dlg.IntSlider("卡顿后至少缓冲", s.rebufferMs, 100..10000, "毫秒") { v -> custom { c.settings.setRebufferMs(v) } }
+                    })
+                    OptionRow("最少缓冲", value = "${s.minBufferSeconds} 秒", onClick = {
+                        dlg = Dlg.IntSlider("最少缓冲", s.minBufferSeconds, 1..60, "秒") { v -> custom { c.settings.setMinBufferSeconds(v) } }
+                    })
+                    OptionRow("最多缓冲", value = "${s.bufferSeconds} 秒", onClick = {
+                        dlg = Dlg.IntSlider("最多缓冲", s.bufferSeconds, 10..300, "秒") { v -> custom { c.settings.setBufferSeconds(v) } }
+                    })
+                    OptionRow("边播边存缓存", value = "${s.cacheSizeMb} MB", onClick = {
+                        dlg = Dlg.IntSlider("边播边存缓存（重启生效）", s.cacheSizeMb, 128..4096, "MB") { v -> custom { c.settings.setCacheSizeMb(v) } }
+                    })
+                    OptionRow("连接超时", value = "${s.connectTimeoutSec} 秒", onClick = {
+                        dlg = Dlg.IntSlider("连接超时", s.connectTimeoutSec, 2..30, "秒") { v -> custom { c.settings.setConnectTimeoutSec(v) } }
+                    })
+                    OptionRow("读取超时", value = "${s.readTimeoutSec} 秒", onClick = {
+                        dlg = Dlg.IntSlider("读取超时", s.readTimeoutSec, 3..60, "秒") { v -> custom { c.settings.setReadTimeoutSec(v) } }
+                    })
+                    SwitchRow("预加载下一集", s.preloadNext) { v -> custom { c.settings.setPreloadNext(v) } }
+                    SwitchRow("DNS 预解析 / 连接预热", s.dnsPrefetch, "启动和打开详情页时提前和源、解析接口建立连接") { v -> custom { c.settings.setDnsPrefetch(v) } }
+                }
+            }
+            Group("播放") {
                 SwitchRow("记忆播放进度", s.rememberProgress) { v -> scope.launch { c.settings.setRememberProgress(v) } }
                 SwitchRow("自动下一集", s.autoNext) { v -> scope.launch { c.settings.setAutoNext(v) } }
                 OptionRow("默认倍速") {
@@ -150,9 +210,6 @@ fun SettingsScreen(onBack: () -> Unit) {
                 })
                 OptionRow("默认跳过片尾", value = "${s.skipOutro} 秒", onClick = {
                     dlg = Dlg.IntSlider("默认跳过片尾", s.skipOutro, 0..300, "秒") { v -> scope.launch { c.settings.setSkipOutro(v) } }
-                })
-                OptionRow("边播边存缓存", value = "${s.cacheSizeMb} MB", onClick = {
-                    dlg = Dlg.IntSlider("边播边存缓存（重启生效）", s.cacheSizeMb, 128..4096, "MB") { v -> scope.launch { c.settings.setCacheSizeMb(v) } }
                 })
             }
             Group("下载") {
@@ -328,3 +385,5 @@ private fun ParseEditDialog(
     )
 }
 
+
+private fun fmtMs(ms: Long) = if (ms < 1000) "${ms}ms" else "%.1fs".format(java.util.Locale.US, ms / 1000f)

@@ -32,13 +32,21 @@ import com.vplayer.app.player.ad.AdFilterResult
 import com.vplayer.app.player.ad.AdFilteringParserFactory
 import com.vplayer.app.player.ad.AdRule
 import com.vplayer.app.util.AppLog
+import com.vplayer.app.player.engine.ExoEngine
+import com.vplayer.app.player.engine.Kernel
+import com.vplayer.app.player.engine.NativeEngine
+import com.vplayer.app.player.engine.PlaybackProfile
+import com.vplayer.app.player.engine.PlaybackProfiles
+import com.vplayer.app.player.engine.PlayerEngine
+import okhttp3.OkHttpClient
+import java.util.concurrent.TimeUnit
 import androidx.media3.exoplayer.hls.playlist.DefaultHlsPlaylistParserFactory
 import java.io.File
 
 /**
  * 全局唯一的 ExoPlayer 持有者。
  * - 详情页打开即对续播集 [prewarm]（setMediaSource + prepare，不播放），进入播放页直接起播
- * - 低起播缓冲（bufferForPlaybackMs = 1000ms），可配置最大缓冲
+ * - 缓冲参数按加载策略（极速起播 / 均衡 / 流畅优先 / 自定义），见 PlaybackProfiles
  * - OkHttp 数据源（共享连接池 / DNS 缓存）+ SimpleCache LRU 边播边缓存
  * - 硬解开关：关闭时优先选择软件解码器
  */
@@ -80,21 +88,33 @@ class PlayerManager(private val context: Context, private val settings: Settings
         }
     }
 
-    private val httpFactory by lazy {
-        OkHttpDataSource.Factory(Http.client).setUserAgent(DEFAULT_UA)
+    /** 当前加载策略（极速 / 均衡 / 流畅 / 自定义） */
+    fun profile(): PlaybackProfile = PlaybackProfiles.of(settings.state.value)
+
+    // 播放用的 OkHttp：共享全局连接池 / DNS 缓存，超时按加载策略
+    private var mediaClientKey = ""
+    private var mediaClient: OkHttpClient? = null
+    private fun mediaClient(): OkHttpClient {
+        val pf = profile()
+        val k = "${pf.connectTimeoutSec}|${pf.readTimeoutSec}"
+        mediaClient?.let { if (k == mediaClientKey) return it }
+        return Http.client.newBuilder()
+            .connectTimeout(pf.connectTimeoutSec.toLong(), TimeUnit.SECONDS)
+            .readTimeout(pf.readTimeoutSec.toLong(), TimeUnit.SECONDS)
+            .build().also { mediaClient = it; mediaClientKey = k }
     }
 
     private fun dataSourceFactory(local: Boolean, headers: Map<String, String> = emptyMap()): DataSource.Factory {
-        val http = if (headers.isEmpty()) httpFactory else {
+        val http = if (headers.isEmpty()) OkHttpDataSource.Factory(mediaClient()).setUserAgent(DEFAULT_UA) else {
             val ua = headers.entries.firstOrNull { it.key.equals("User-Agent", true) }?.value
-            OkHttpDataSource.Factory(Http.client)
+            OkHttpDataSource.Factory(mediaClient())
                 .setUserAgent(ua?.takeIf { it.isNotBlank() } ?: DEFAULT_UA)
                 .setDefaultRequestProperties(headers.filterKeys { !it.equals("User-Agent", true) && it.isNotBlank() })
         }
         val upstream = DefaultDataSource.Factory(context, http)
         if (local) return upstream
         return CacheDataSource.Factory()
-            .setCache(cache(context, settings.state.value.cacheSizeMb))
+            .setCache(cache(context, profile().cacheMb))
             .setUpstreamDataSourceFactory(upstream)
             .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
     }
@@ -130,14 +150,13 @@ class PlayerManager(private val context: Context, private val settings: Settings
     /** 获取（或按最新设置重建）播放器，必须在主线程调用 */
     fun obtain(): ExoPlayer {
         val s = settings.state.value
-        val key = "${s.hwDecode}|${s.bufferSeconds}"
+        val pf = profile()
+        val key = "${s.hwDecode}|${pf.minBufferMs}|${pf.maxBufferMs}|${pf.startMs}|${pf.rebufferMs}"
         player?.let { if (key == configKey) return it }
         player?.release()
         preparedKey = null
-        val maxBuf = (s.bufferSeconds * 1000).coerceIn(5_000, 600_000)
-        val minBuf = minOf(15_000, maxBuf)
         val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(minBuf, maxBuf, 1000, 2000)
+            .setBufferDurationsMs(pf.minBufferMs, pf.maxBufferMs, pf.startMs, pf.rebufferMs)
             .setPrioritizeTimeOverSizeThresholds(true)
             .setBackBuffer(10_000, true)
             .build()
@@ -191,6 +210,12 @@ class PlayerManager(private val context: Context, private val settings: Settings
         }
         preparedKey = null
         preparedUrl = null
+    }
+
+    /** 按内核创建播放引擎：ExoPlayer 复用全局实例；IJK / 系统播放器每个播放页单独创建 */
+    fun engine(kind: Kernel): PlayerEngine = when (kind) {
+        Kernel.IJK, Kernel.SYSTEM -> NativeEngine(context, kind, { profile() }, { settings.state.value.hwDecode }) { id, r -> onAdFiltered(id, r) }
+        else -> ExoEngine(this)
     }
 
     fun releaseAll() {

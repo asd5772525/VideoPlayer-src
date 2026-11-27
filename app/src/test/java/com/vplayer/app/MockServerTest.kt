@@ -258,4 +258,22 @@ class MockServerTest {
         assertEquals(7, dir2.listFiles()!!.count { it.name.startsWith("seg_") })
         dir.deleteRecursively(); dir2.deleteRecursively()
     }
+
+    // ---------- v1.2 ----------
+
+    @Test
+    fun ijkLocalPlaylistDropsAdSegments(): Unit = runBlocking {
+        need()
+        val dir = tmpDir()
+        val loc = com.vplayer.app.player.engine.HlsLocalizer.localize("$base/media/hls_ad/index.m3u8", com.vplayer.app.player.ad.AdRule(), dir)
+        assertTrue(loc != null)
+        assertEquals(1, loc!!.result.removedSegments)
+        val uris = loc.file.readText().lines().filter { it.isNotBlank() && !it.startsWith("#") }
+        assertEquals(6, uris.size)
+        assertTrue(uris.all { it.startsWith("$base/") })            // 本地文件里全是绝对地址，IJK 能直接拉分片
+        assertTrue(uris.none { it.contains("/ad/") })
+        // 改写后的地址真能下载到正片分片
+        assertArrayEquals(raw("/media/hls/seg3.ts"), URL(uris[3]).readBytes())
+        dir.deleteRecursively()
+    }
 }

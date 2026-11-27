@@ -51,6 +51,16 @@ data class AppSettings(
     val lastHealthCheck: Long = 0,
     val adFilter: Boolean = true,      // 去除插播广告（M3U8）
     val autoFailover: Boolean = true,  // 播放失败 / 卡顿时自动换线
+    // ---- v1.2 播放内核与加载策略 ----
+    val kernel: String = "auto",        // auto / exo / ijk / system
+    val preset: String = "balanced",    // fast / balanced / smooth / custom
+    val minBufferSeconds: Int = 15,     // 以下为「自定义」时的值（加上 bufferSeconds / preloadNext / cacheSizeMb）
+    val startMs: Int = 1000,
+    val rebufferMs: Int = 2000,
+    val connectTimeoutSec: Int = 8,
+    val readTimeoutSec: Int = 15,
+    val dnsPrefetch: Boolean = true,
+    val parseRace: Boolean = true,      // 解析竞速（前两个同时请求）
 )
 
 /**
@@ -85,6 +95,15 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope, pr
         val lastHealthCheck = longPreferencesKey("last_health_check")
         val adFilter = booleanPreferencesKey("ad_filter")
         val autoFailover = booleanPreferencesKey("auto_failover")
+        val kernel = stringPreferencesKey("kernel")
+        val preset = stringPreferencesKey("preset")
+        val minBufferSeconds = intPreferencesKey("min_buffer_seconds")
+        val startMs = intPreferencesKey("start_ms")
+        val rebufferMs = intPreferencesKey("rebuffer_ms")
+        val connectTimeoutSec = intPreferencesKey("connect_timeout_sec")
+        val readTimeoutSec = intPreferencesKey("read_timeout_sec")
+        val dnsPrefetch = booleanPreferencesKey("dns_prefetch")
+        val parseRace = booleanPreferencesKey("parse_race")
     }
 
     private val d = defaults
@@ -106,7 +125,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope, pr
             downloadThreads = (p[K.downloadThreads] ?: d.downloadConcurrency).coerceIn(1, 16),
             maxDownloadTasks = (p[K.maxDownloadTasks] ?: d.maxDownloadTasks).coerceIn(1, 5),
             wifiOnly = p[K.wifiOnly] ?: false,
-            cacheSizeMb = p[K.cacheSizeMb] ?: 512,
+            cacheSizeMb = p[K.cacheSizeMb] ?: d.cacheMb,
             theme = p[K.theme] ?: 0,
             updateUrlOverride = p[K.updateUrl] ?: "",
             appLock = p[K.appLock] ?: false,
@@ -116,6 +135,16 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope, pr
             lastHealthCheck = p[K.lastHealthCheck] ?: 0L,
             adFilter = p[K.adFilter] ?: true,
             autoFailover = p[K.autoFailover] ?: true,
+            kernel = p[K.kernel] ?: d.kernel,
+            // v1.1 升级上来、改过缓冲 / 预加载 / 缓存的用户：默认进入「自定义」，保留他们原来的值
+            preset = p[K.preset] ?: if (p[K.bufferSeconds] != null || p[K.preloadNext] != null || p[K.cacheSizeMb] != null) "custom" else d.preset,
+            minBufferSeconds = p[K.minBufferSeconds] ?: d.minBufferSeconds,
+            startMs = p[K.startMs] ?: d.startMs,
+            rebufferMs = p[K.rebufferMs] ?: d.rebufferMs,
+            connectTimeoutSec = p[K.connectTimeoutSec] ?: d.connectTimeout,
+            readTimeoutSec = p[K.readTimeoutSec] ?: d.readTimeout,
+            dnsPrefetch = p[K.dnsPrefetch] ?: d.dnsPrefetch,
+            parseRace = p[K.parseRace] ?: d.parseRace,
         )
     }
 
@@ -131,6 +160,9 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope, pr
         preloadNext = d.preloadNext, bufferSeconds = d.bufferSeconds, autoNext = d.autoNext,
         defaultSpeed = d.defaultSpeed, longPressSpeed = d.longPressSpeed, skipIntro = d.skipIntro,
         skipOutro = d.skipOutro, downloadThreads = d.downloadConcurrency, maxDownloadTasks = d.maxDownloadTasks,
+        cacheSizeMb = d.cacheMb, kernel = d.kernel, preset = d.preset, minBufferSeconds = d.minBufferSeconds,
+        startMs = d.startMs, rebufferMs = d.rebufferMs, connectTimeoutSec = d.connectTimeout, readTimeoutSec = d.readTimeout,
+        dnsPrefetch = d.dnsPrefetch, parseRace = d.parseRace,
     ))
 
     suspend fun current(): AppSettings = flow.first()
@@ -165,4 +197,13 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope, pr
     suspend fun setLastHealthCheck(v: Long) = set(K.lastHealthCheck, v)
     suspend fun setAdFilter(v: Boolean) = set(K.adFilter, v)
     suspend fun setAutoFailover(v: Boolean) = set(K.autoFailover, v)
+    suspend fun setKernel(v: String) = set(K.kernel, v)
+    suspend fun setPreset(v: String) = set(K.preset, v)
+    suspend fun setMinBufferSeconds(v: Int) = set(K.minBufferSeconds, v.coerceIn(1, 120))
+    suspend fun setStartMs(v: Int) = set(K.startMs, v.coerceIn(100, 10_000))
+    suspend fun setRebufferMs(v: Int) = set(K.rebufferMs, v.coerceIn(100, 20_000))
+    suspend fun setConnectTimeoutSec(v: Int) = set(K.connectTimeoutSec, v.coerceIn(2, 60))
+    suspend fun setReadTimeoutSec(v: Int) = set(K.readTimeoutSec, v.coerceIn(3, 120))
+    suspend fun setDnsPrefetch(v: Boolean) = set(K.dnsPrefetch, v)
+    suspend fun setParseRace(v: Boolean) = set(K.parseRace, v)
 }

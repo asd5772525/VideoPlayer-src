@@ -12,6 +12,7 @@ import com.vplayer.app.download.DownloadRepository
 import com.vplayer.app.player.PlayerManager
 import com.vplayer.app.player.UrlResolver
 import com.vplayer.app.update.UpdateManager
+import com.vplayer.app.util.KernelStats
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -34,4 +35,5 @@ class AppContainer(context: Context) {
     val player = PlayerManager(context, settings)
     val downloads = DownloadRepository(context, db, settings)
     val updates = UpdateManager(context, settings, config)
+    val kernelStats = KernelStats(context)
 }

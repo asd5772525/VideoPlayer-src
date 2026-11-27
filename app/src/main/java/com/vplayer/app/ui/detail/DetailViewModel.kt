@@ -12,6 +12,11 @@ import com.vplayer.app.player.SpeedTester
 import com.vplayer.app.player.AdRules
 import com.vplayer.app.player.Resolved
 import com.vplayer.app.player.UrlResolver
+import com.vplayer.app.player.ParseOrder
+import com.vplayer.app.player.engine.Kernel
+import com.vplayer.app.player.engine.KernelPolicy
+import com.vplayer.app.player.engine.PlaybackProfiles
+import com.vplayer.app.data.net.Warmup
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -58,6 +63,11 @@ class DetailViewModel(private val c: AppContainer, private val sourceId: String,
             val s = c.sources.byId(sourceId)
             _source.value = s
             if (s == null) { _error.value = "数据源不存在或已被移除"; return@launch }
+            // 预热这个源会用到的前两个解析接口的连接（详情页加载的同时完成握手）
+            launch {
+                if (PlaybackProfiles.of(c.settings.current()).dnsPrefetch)
+                    runCatching { Warmup.warm(ParseOrder.forSource(c.sources.parses.value.map { it.parse }, s, null).take(2).map { it.url }) }
+            }
             c.cms.cachedDetail(s, vodId)?.let { onVod(it) } // 预取命中：瞬间显示
             c.cms.detailFlow(s, vodId)
                 .catch { e -> if (_vod.value == null) _error.value = e.message ?: "加载失败" }
@@ -152,6 +162,10 @@ class DetailViewModel(private val c: AppContainer, private val sourceId: String,
             val intro = c.db.playbackDao().showPref(key)?.introSec ?: c.settings.current().skipIntro
             startPos = intro * 1000L
         }
+        // 只有 ExoPlayer 能预热（prepare 但不播放）；其它内核只提前解析好地址（已缓存），进播放页直接用
+        val user = Kernel.of(c.settings.current().kernel)
+        val kernel = if (local != null) Kernel.EXO else KernelPolicy.initial(user, src?.kernel, ijkOk = true)
+        if (kernel != Kernel.EXO) return
         withContext(Dispatchers.Main) { c.player.prewarm("$key|$line|$ep", url, startPos, r.headers, adRule) }
     }
 

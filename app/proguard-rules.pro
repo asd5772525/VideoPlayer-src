@@ -25,3 +25,7 @@
 -keepclassmembers class * {
     @android.webkit.JavascriptInterface <methods>;
 }
+
+# ---- IJK 内核（native 代码按名字回调 Java，不能混淆 / 删除） ----
+-keep class tv.danmaku.ijk.media.player.** { *; }
+-dontwarn tv.danmaku.ijk.media.player.**

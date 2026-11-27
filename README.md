@@ -24,9 +24,12 @@
 ## 它能做什么
 
 **看得快**
-- ExoPlayer（Media3）播放，首帧缓冲约 1 秒，支持硬解
-- 直链（m3u8 / mp4 / flv）直接播放，不绕路；不是直链时，依次尝试解析接口，最后用 WebView 嗅探
-- 每个源可以绑定自己专用的解析接口（还能细到某一条线路），绑定的先试，没绑定的照常兜底
+- 三个播放内核可选：**ExoPlayer**（Media3，默认）、**IJK**（ijkplayer + FFmpeg，格式最全）、**系统播放器**（最省内存）。「自动」模式先用 ExoPlayer，遇到它解不了的格式自动换 IJK，进度不丢
+- 加载策略预设：**极速起播**（缓冲半秒就开播）/ **均衡**（默认）/ **流畅优先**（大缓冲，少卡顿）/ **自定义**
+- 设置里能看到每个内核在你手机上的**实测起播耗时**（点播放到出画面），方便对比哪个更快
+- 直链（m3u8 / mp4 / flv）直接播放，不绕路；不是直链时，用这个源自己的解析接口，再用通用解析兜底，最后用 WebView 嗅探
+- **解析竞速**：前两个解析接口同时请求，谁先返回能用的地址就用谁
+- 启动时和打开详情页时提前和源、解析接口建立连接（DNS + TLS 握手），点播放时少等一次握手
 - 打开详情页就开始准备播放器，看完一集前预加载下一集
 - 接口和图片都做了多级缓存：先显示缓存内容，后台再刷新
 
@@ -37,7 +40,7 @@
 - 双击左边退 10 秒、双击右边进 10 秒，双击中间暂停
 - 手势：左边滑动调亮度，右边调音量，横滑拖动进度；还有锁屏、横屏全屏、画中画
 - 自动换线：播放出错或卡住超过 8 秒，自动换下一个解析、再换下一条线路，集数和进度都保留，换了会弹个提示
-- 去除插播广告：很多 m3u8 会在正片中间夹几段十几秒的广告，App 会识别出来跳过去，在线播放和下载都生效（可以在设置里关掉）
+- 去除插播广告：很多 m3u8 会在正片中间夹几段十几秒的广告，App 会识别出来跳过去，在线播放和下载都生效（可以在设置里关掉；ExoPlayer 和 IJK 内核支持，系统播放器内核不支持）
 
 **源自己管**
 - 适配苹果CMS v10 的 JSON 和 XML 接口，支持多源切换
@@ -65,14 +68,14 @@
 
 每个版本会有好几个 APK，区别只是适配的 CPU 不同：
 
-| 文件名结尾 | 适合 |
-|---|---|
-| `-universal.apk` | 所有手机都能装（**不知道选哪个就下这个**） |
-| `-arm64-v8a.apk` | 近几年的绝大多数安卓手机（2017 年以后的基本都是） |
-| `-armeabi-v7a.apk` | 很老的 32 位手机、部分电视盒子 |
-| `-x86_64.apk` | 电脑上的安卓模拟器 |
+| 文件名结尾 | 适合 | 大小（v1.2） |
+|---|---|---|
+| `-arm64-v8a.apk` | 近几年的绝大多数安卓手机（2017 年以后的基本都是）**推荐** | 约 8.4 MB |
+| `-armeabi-v7a.apk` | 很老的 32 位手机、部分电视盒子 | 约 8.1 MB |
+| `-x86_64.apk` | 电脑上的安卓模拟器 | 约 9.1 MB |
+| `-universal.apk` | 所有手机都能装（不确定就下这个） | 约 19.5 MB |
 
-> 说实话，这几个包大小只差几十 KB：App 本身几乎没有 native 代码。**不知道选哪个就下 universal，或者 arm64**，装错了也没关系，装不上换 universal 就行。以后在线更新时，App 会自己挑合适的那个。
+> v1.2 加了 IJK 内核（自带 FFmpeg），每个 CPU 架构多了约 5~6 MB 的 native 库，所以现在分包比通用包小很多。**大多数手机下 arm64-v8a 就行**；装不上再换 universal。在线更新时 App 会自动挑适合自己 CPU 的那个包。
 
 装好以后，App 有新版本会自动提醒，也可以在「我的 → 检查更新」里手动检查。
 
@@ -137,11 +140,13 @@ base64 -i release.jks | tr -d '\n' > release.jks.b64                            
 ![后台：播放源管理](docs/images/admin-sources.png)
 
 - **加源**：点「＋ 添加播放源」，填名称和地址，点「测试」看能不能连上。地址很多？用「📋 批量添加」，一行一个。
-- **解析接口、播放器默认设置、公告**：分别在对应的标签页里填写。解析接口点「编辑 → 高级设置」还能填 Referer、User-Agent、超时和返回字段（比如 `data.playurl`），不填就用默认，大多数接口都不用管。
-- **给源绑定解析**：在播放源卡片上点「编辑」，在「绑定解析接口」里勾上这个源专用的解析就行。勾了的会先试，没勾的照样排在后面兜底；一个都不勾就是按测速顺序全部用。同一个源里不同线路要用不同解析的话，展开「按线路单独绑定」，填线路名（和片源里的 `vod_play_from` 一样，比如 `m3u8`）再勾解析。绑定好的解析会以小标签显示在卡片上。删掉一个被绑定的解析时，后台会提醒你并自动解绑。
+- **解析接口（可选，跟着播放源走）**：大多数源是 m3u8 / mp4 直链，**不用填**。某个源的播放地址是网页时，在添加这个源的弹窗里展开「这个源需要解析接口吗？」，或者在源卡片上点「编辑」，在「解析接口（可选）」里直接填解析地址就行（名称可留空，类型选 JSON 或网页嗅探）。可以填多个，按顺序尝试；「高级」里能填 Referer、User-Agent、超时、返回字段（比如 `data.playurl`），还能限定「只用于这些线路」（线路名和片源里的 `vod_play_from` 一样，比如 `m3u8`）。填好的解析会以小标签显示在源卡片上，只给这个源用；删掉源时它的解析也一起删掉。
+- **通用解析（可不填）**：「通用解析」标签页里的是所有源共用的兜底：某个源自己的解析都失败了、或者没填时，按测速顺序依次尝试。需要的话，可以在源的「编辑 → 优先使用哪些通用解析」里调整顺序。
+- **播放内核**：「播放器设置」里选默认内核（推荐「自动」）和加载策略；个别源的视频 ExoPlayer 经常播不了时，可以在这个源的「编辑 → 首选播放内核」里指定 IJK。
+- **播放器默认设置、公告**：分别在对应的标签页里填写。
 - **去广告**：同样在「编辑」里。「去除插播广告」默认是开的，App 会自动识别；如果你知道这个源的广告分片地址长什么样（比如都带 `/ad/` 或 `adslot`），把关键词一行一个填进去，识别会更准。某个源被误删了内容，就把开关关掉，这个源就完全不过滤。
-- **测速**：点「⚡ 一键测速」，GitHub 会替你测一遍所有源，结果按速度排好序。
-- **发布**：点「预览修改」，会用大白话列出这次改了什么（包括哪个源绑了哪些解析、去广告怎么设的）。确认后点「**编译发布**」，大约 5–10 分钟后新版 APK 出现在 Releases，用户手机会收到更新提醒。
+- **测速**：点「⚡ 一键测速」，GitHub 会替你测一遍所有源和解析，按速度排好序、把连续失败 3 次的移走，**结果只保存到仓库，不会编译**。测完页面上会提示「测速结果已保存，点「编译发布」后 App 才会更新」。
+- **发布**：点「预览修改」，会用大白话列出这次改了什么（包括每个源的解析接口、内核、去广告怎么设的）。确认后点「**编译发布**」，大约 5–10 分钟后新版 APK 出现在 Releases，用户手机会收到更新提醒。「仅保存」只把配置存进仓库，不编译、不推送更新。
 
 ![后台：修改预览](docs/images/admin-diff.png)
 
@@ -158,15 +163,29 @@ base64 -i release.jks | tr -d '\n' > release.jks.b64                            
 ```
 
 - **配置写死在每个版本里。** `config.json` 在编译时打进 APK，App 启动时不去联网拉配置，所以打开速度不受影响。改配置等于发一个新版本，用户通过在线更新拿到它。
-- **自动巡检。** `source-check.yml` 每 6 小时测一遍所有源，按速度重新排序；连续 3 次失败的源会被移到 `removed.json`（后台可以一键恢复）。只有源列表真的变了，才会触发重新编译。
+- **自动巡检。** `source-check.yml` 每 6 小时测一遍所有源，按速度重新排序；连续 3 次失败的源会被移到 `removed.json`（后台可以一键恢复）。**测速只保存结果，不会编译**：要让 App 用上新的顺序，到后台点「编译发布」。
+- **只有你明确要求时才编译。** 见下表。
 - **App 本机也会测速。** 用户网络和 GitHub 服务器的网络情况不同，所以 App 会按本机测速结果排序，并在本地隐藏连续失败的源。
+
+### 什么时候会编译
+
+| 操作 | 会编译吗 | 会发布（Release + 推送更新）吗 |
+|---|---|---|
+| 后台点「编译发布」/「保存并编译发布」 | ✅ | ✅ |
+| 推送 `v*` 标签（如 `v1.2.0`） | ✅ | ✅ |
+| 在 Actions 页面手动运行「构建与发布 APK」 | ✅ | 按勾选的 `release` |
+| 推送到 main 且改了 App 代码（`app/**`、Gradle 脚本、`build.yml`） | ✅ 只编译检查 | ❌ |
+| 后台「仅保存」、在网页上直接改 `config.json` | ❌ | ❌ |
+| 一键测速 / 每 6 小时的定时测速（改 `status.json` / `removed.json` / `config.json` 排序） | ❌ | ❌ |
+| 改 README、`docs/`、`scripts/`、`update.json` | ❌ | ❌ |
+| 在 Actions 页面手动运行「播放源测速」并勾选 `rebuild` | ✅（源列表有变化时） | ✅ |
 
 ### 版本号规则
 
 | 怎么触发 | 版本名 |
 |---|---|
 | 推送 tag，比如 `v1.2.0` | `1.2.0` |
-| 后台点「编译发布」，或 `config.json` 有改动 | `1.2.0-r57`（最近一个 tag 加上运行编号） |
+| 后台点「编译发布」/ 手动运行 / 改了 App 代码的推送 | `1.2.0-r57`（最近一个 tag 加上运行编号） |
 
 `versionCode = 100 + 运行编号`，只增不减，在线更新据此判断是不是新版本。打正式版本的命令如下，tag 的说明会作为更新日志，多条用 `|` 分隔：
 
@@ -181,7 +200,7 @@ git tag -a v1.1.0 -m "起播速度提升|新增下载并发设置" && git push o
 <details>
 <summary>不用后台，直接改 config.json</summary>
 
-在仓库里打开 `config.json`，点铅笔图标编辑，然后 Commit。推送后会自动编译发布。
+在仓库里打开 `config.json`，点铅笔图标编辑，然后 Commit。改完**不会自动编译**，到后台点「编译发布」（或在 Actions 里手动运行「构建与发布 APK」）。
 
 ```json
 {
@@ -189,17 +208,20 @@ git tag -a v1.1.0 -m "起播速度提升|新增下载并发设置" && git push o
   "sources": [
     { "key": "s1", "name": "示例源", "api": "https://your-api.example/api.php/provide/vod",
       "type": "json", "enabled": true, "order": 1, "default": true,
-      "parses": ["p1"],
+      "parses": ["s1p1", "p1"],
       "lineParses": { "m3u8": ["p1"] },
+      "kernel": "ijk",
       "adFilter": { "enabled": true, "keywords": ["/ad/"], "regex": "", "discontinuityMax": 30 } }
   ],
   "parses": [
-    { "key": "p1", "name": "示例解析", "url": "https://your-parse.example/?url=",
+    { "key": "s1p1", "name": "示例源专属解析", "url": "https://your-parse.example/a?url=", "type": "json", "owner": "s1" },
+    { "key": "p1", "name": "通用解析", "url": "https://your-parse.example/?url=",
       "type": "json", "enabled": true, "order": 1,
       "headers": { "Referer": "https://your-parse.example/" }, "timeout": 10, "jsonPath": "data.url" }
   ],
-  "player": { "bufferSeconds": 30, "hwDecode": true, "preloadNext": true, "autoNext": true,
-              "defaultSpeed": 1.0, "longPressSpeed": 3.0, "directFirst": true,
+  "player": { "kernel": "auto", "preset": "balanced",
+              "bufferSeconds": 30, "hwDecode": true, "preloadNext": true, "autoNext": true,
+              "defaultSpeed": 1.0, "longPressSpeed": 3.0, "directFirst": true, "parseRace": true,
               "downloadConcurrency": 8, "maxDownloadTasks": 2 },
   "notice": { "enabled": false, "id": "notice-1", "title": "公告", "text": "", "link": "" }
 }
@@ -208,7 +230,11 @@ git tag -a v1.1.0 -m "起播速度提升|新增下载并发设置" && git push o
 - XML 接口的地址形如 `…/api.php/provide/vod/at/xml`，`type` 填 `xml`
 - 解析接口的 `type`：`json` 表示接口返回 JSON；`webview` 表示网页嗅探
 - 下面这些字段都是可选的，不写就是默认行为：
-  - `sources[].parses`：这个源优先用的解析（填 `parses[].key`，按顺序）；`sources[].lineParses`：按线路名单独绑定，优先级更高
+  - `parses[].owner`：填播放源的 `key` = 这个源专属的解析（只给它用）；不写 = 通用解析（所有源共用的兜底）
+  - `sources[].parses`：这个源优先用的解析（填 `parses[].key`，按顺序）；`sources[].lineParses`：按线路名单独指定，优先级更高。只写在 `lineParses` 里的专属解析只用于那些线路
+  - 手写时也可以偷懒，直接把解析对象写在源里：`"parses": [{ "name": "A", "url": "https://…/?url=" }]`，App 和后台都会自动整理成上面的格式（下次在后台保存时写回）
+  - `sources[].kernel`：这个源的首选内核 `exo` / `ijk` / `system`，只在 App 里选「自动」时生效
+  - `player.kernel`：默认内核 `auto`（推荐）/ `exo` / `ijk` / `system`；`player.preset`：`fast` / `balanced` / `smooth` / `custom`（custom 时用 `minBufferSeconds`、`bufferSeconds`、`startMs`、`rebufferMs`、`cacheMb`、`connectTimeout`、`readTimeout`、`preloadNext`、`dnsPrefetch`）
   - `sources[].adFilter`：不写 = 智能识别插播广告；`enabled: false` = 这个源不过滤；`keywords` / `regex` 匹配分片地址；`discontinuityMax` 是一段广告最长多少秒（默认 30）
   - `parses[].headers`：请求解析接口时带的请求头（常用 `Referer`、`User-Agent`），播放解析出来的地址时也会带上；`timeout`：超时秒数；`jsonPath`：视频地址在返回 JSON 里的位置，不填就依次试 `url`、`data.url`、`playurl`、`data.playurl`、`m3u8`、`data`、`result.url`
 </details>
@@ -264,7 +290,8 @@ App 按以下顺序查找 `update.json`（地址在编译时自动写入）：
 ```
 app/src/main/java/com/vplayer/app/
   data/       苹果CMS 适配、缓存、数据库、测速
-  player/     播放器、地址解析（解析绑定 / JSON 字段）、线路测速、手势与自动换线逻辑
+  player/     播放器、地址解析（专属 / 通用解析、竞速、JSON 字段）、线路测速、手势与自动换线逻辑
+  player/engine/  播放内核：ExoPlayer / IJK / 系统播放器（统一成 Media3 Player 接口）、加载预设
   player/ad/  M3U8 插播广告过滤（播放和下载共用）
   download/   M3U8 / MP4 多线程下载
   util/       崩溃日志、运行日志、日志导出
@@ -277,7 +304,7 @@ scripts/               测速脚本
 .github/workflows/     编译发布 / 定时测速
 ```
 
-技术栈：Kotlin、Jetpack Compose（Material 3）、Media3 ExoPlayer、Room、WorkManager、Paging 3、OkHttp、Coil、DataStore。
+技术栈：Kotlin、Jetpack Compose（Material 3）、Media3 ExoPlayer、ijkplayer（GSYVideoPlayer 在 Maven Central 发布的构建）、Room、WorkManager、Paging 3、OkHttp、Coil、DataStore。
 
 ---
 
@@ -292,11 +319,17 @@ scripts/               测速脚本
 **后台测试提示「浏览器无法直接访问」？**
 很多接口不允许浏览器跨域访问，或者用的是 http 地址，这并不代表源不能用。点「⚡ 一键测速」，用 GitHub 服务器测出的结果为准。
 
+**为什么测速完 App 里的源顺序没变？**
+测速只把结果存进仓库，不会编译。到后台点「编译发布」，新版本里才是新的顺序（App 本机也会自己测速排序，所以不发布也能用）。
+
 **改了配置，用户多久能收到？**
-编译需要 5–10 分钟。用户的 App 会在下次启动后约 5 秒自动检查更新（每天最多检查一次），也可以在「我的 → 检查更新」里手动检查。
+改完要点「编译发布」。编译需要 5–10 分钟。用户的 App 会在下次启动后约 5 秒自动检查更新（每天最多检查一次），也可以在「我的 → 检查更新」里手动检查。
 
 **Releases 里那么多 APK，下哪个？**
-不知道就下 `universal`，或者 `arm64-v8a`（现在的手机基本都是）。它们功能完全一样，大小也只差几十 KB。
+下 `arm64-v8a`（现在的手机基本都是）；不确定就下 `universal`。它们功能完全一样，universal 只是把三种 CPU 的 IJK 库都带上了，所以大很多。
+
+**选哪个播放内核？**
+保持「自动」就好：先用 ExoPlayer（起播快、去广告最完整），遇到它播不了的格式（比如部分 HEVC / 特殊封装）自动换 IJK。想对比快慢，可以在播放页「播放器面板 → 播放内核」临时切换，设置页「起播速度对比」里有每个内核的实测平均耗时。
 
 **去广告会不会把正片删掉？**
 我把它做得很保守：只看 m3u8 里被 `#EXT-X-DISCONTINUITY` 隔开、总长不超过 30 秒、而且和正片的地址目录或文件命名明显不一样的片段；最长的那一段永远当正片不动；一次最多删全片的 20%，超过就一段都不删。单凭时长不一样是不会删的。真遇到误删，在后台把这个源的「去除插播广告」关掉，或者在 App 设置里关掉总开关。
@@ -311,6 +344,8 @@ scripts/               测速脚本
 - 解析接口支持两种：返回 JSON 的（字段路径可配置），和网页嗅探。需要签名、加密参数之类的接口暂不支持。
 - 去插播广告是启发式的：广告和正片用同一个目录、同样的命名时认不出来（这时可以在后台填关键词）；直播流不处理。
 - 长按快退其实是每 0.2 秒往回跳一小段（ExoPlayer 不能倒放），画面是一跳一跳的，不是平滑倒放。
+- IJK / 系统播放器内核：没有「播放列表预缓冲下一集」（只提前解析好下一集地址），也不支持详情页预热；IJK 去广告靠本地改写 m3u8，需要自定义请求头（Referer 等）的地址不改写；系统播放器内核不去广告。
+- IJK 只带了 arm64-v8a / armeabi-v7a / x86_64 三种 CPU 的库，32 位 x86 设备会自动退回系统播放器。
 - 自动换线判断「卡顿」用的是缓冲超过 8 秒，网特别慢时拖动进度也可能触发换线；不想要可以在设置里关掉「播放失败自动换线」。
 - Baseline Profile（启动加速规则）是手写的，不是在真机上跑基准测试生成的，效果比不上专门生成的。
 

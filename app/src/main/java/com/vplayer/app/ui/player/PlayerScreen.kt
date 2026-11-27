@@ -81,6 +81,8 @@ import androidx.media3.ui.PlayerView
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import com.vplayer.app.player.HoldSeek
+import com.vplayer.app.player.engine.Kernel
+import androidx.media3.common.Player
 import com.vplayer.app.player.TapZone
 import com.vplayer.app.ui.category.Chip
 import com.vplayer.app.ui.components.Group
@@ -98,6 +100,7 @@ private val RATIOS = listOf("适应", "填充", "拉伸", "16:9", "4:3")
 @Composable
 fun PlayerScreen(vm: PlayerViewModel, activity: PlayerActivity, inPip: Boolean) {
     val st by vm.state.collectAsStateWithLifecycle()
+    val eng by vm.engineFlow.collectAsStateWithLifecycle()
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val window = activity.window
 
@@ -113,7 +116,7 @@ fun PlayerScreen(vm: PlayerViewModel, activity: PlayerActivity, inPip: Boolean) 
     BackHandler(enabled = landscape) { activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
 
     if (inPip) {
-        Box(Modifier.fillMaxSize().background(Color.Black)) { VideoSurface(vm, st.resizeMode, Modifier.fillMaxSize()) }
+        Box(Modifier.fillMaxSize().background(Color.Black)) { VideoSurface(eng.player, st.resizeMode, Modifier.fillMaxSize()) }
         return
     }
 
@@ -122,7 +125,7 @@ fun PlayerScreen(vm: PlayerViewModel, activity: PlayerActivity, inPip: Boolean) 
             (if (landscape) Modifier.fillMaxSize() else Modifier.statusBarsPadding().fillMaxWidth().aspectRatio(16 / 9f))
                 .background(Color.Black)
         ) {
-            VideoSurface(vm, st.resizeMode, Modifier.fillMaxSize())
+            VideoSurface(eng.player, st.resizeMode, Modifier.fillMaxSize())
             PlayerOverlay(vm, st, activity, landscape)
         }
         if (!landscape) InfoPanel(vm, st)
@@ -131,7 +134,7 @@ fun PlayerScreen(vm: PlayerViewModel, activity: PlayerActivity, inPip: Boolean) 
 
 @OptIn(UnstableApi::class)
 @Composable
-private fun VideoSurface(vm: PlayerViewModel, resizeMode: Int, modifier: Modifier) {
+private fun VideoSurface(player: Player, resizeMode: Int, modifier: Modifier) {
     val ratio: Float? = when (resizeMode) { 3 -> 16 / 9f; 4 -> 4 / 3f; else -> null }
     Box(modifier, contentAlignment = Alignment.Center) {
         AndroidView(
@@ -141,11 +144,11 @@ private fun VideoSurface(vm: PlayerViewModel, resizeMode: Int, modifier: Modifie
                     layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
                     setShutterBackgroundColor(android.graphics.Color.BLACK)
                     keepScreenOn = true
-                    player = vm.player
+                    this.player = player
                 }
             },
             update = { v ->
-                v.player = vm.player
+                if (v.player !== player) v.player = player
                 v.resizeMode = when (resizeMode) {
                     1 -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                     2, 3, 4 -> AspectRatioFrameLayout.RESIZE_MODE_FILL
@@ -160,7 +163,8 @@ private fun VideoSurface(vm: PlayerViewModel, resizeMode: Int, modifier: Modifie
 @SuppressLint("SourceLockedOrientationActivity")
 @Composable
 private fun PlayerOverlay(vm: PlayerViewModel, st: PlayerUiState, activity: PlayerActivity, landscape: Boolean) {
-    val player = vm.player
+    val eng by vm.engineFlow.collectAsStateWithLifecycle()
+    val player = eng.player
     var showControls by remember { mutableStateOf(true) }
     var locked by remember { mutableStateOf(false) }
     var position by remember { mutableLongStateOf(0L) }
@@ -174,7 +178,7 @@ private fun PlayerOverlay(vm: PlayerViewModel, st: PlayerUiState, activity: Play
     var interaction by remember { mutableLongStateOf(0L) }
     val audio = remember { activity.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(player) {
         while (true) {
             position = player.currentPosition
             duration = player.duration.coerceAtLeast(0)
@@ -192,7 +196,7 @@ private fun PlayerOverlay(vm: PlayerViewModel, st: PlayerUiState, activity: Play
 
     Box(
         Modifier.fillMaxSize()
-            .pointerInput(locked) {
+            .pointerInput(locked, player) {
                 detectTapGestures(
                     onTap = { showControls = !showControls; interaction = System.currentTimeMillis() },
                     onDoubleTap = { o ->
@@ -218,7 +222,7 @@ private fun PlayerOverlay(vm: PlayerViewModel, st: PlayerUiState, activity: Play
                     },
                 )
             }
-            .pointerInput(locked) {
+            .pointerInput(locked, player) {
                 if (locked) return@pointerInput
                 var mode = 0 // 1 进度 2 亮度 3 音量
                 var totalX = 0f
@@ -405,8 +409,8 @@ private fun InfoPanel(vm: PlayerViewModel, st: PlayerUiState) {
     LaunchedEffect(Unit) {
         while (true) {
             bufferPct = vm.player.bufferedPercentage.toFloat()
-            val bps = vm.c.player.bandwidthMeter.bitrateEstimate / 8
-            speedText = if (bps > 1024 * 1024) "%.1f MB/s".format(bps / 1048576f) else "${bps / 1024} KB/s"
+            val bps = vm.downloadSpeedBps()
+            speedText = if (bps < 0) "" else if (bps > 1024 * 1024) "%.1f MB/s".format(bps / 1048576f) else "${bps / 1024} KB/s"
             delay(1000)
         }
     }
@@ -415,7 +419,7 @@ private fun InfoPanel(vm: PlayerViewModel, st: PlayerUiState) {
             modifier = Modifier.padding(top = 12.dp))
         val lineName = st.vod?.lines?.getOrNull(st.line)?.name ?: "本地"
         Text(
-            "$lineName · ${if (st.isLocal) "离线播放" else if (st.isDirect) "直链" else "解析" + st.parseName.takeIf { it.isNotBlank() }?.let { "（$it）" }.orEmpty()} · 已缓冲 ${bufferPct.toInt()}% · $speedText",
+            "$lineName · ${if (st.isLocal) "离线播放" else if (st.isDirect) "直链" else "解析" + st.parseName.takeIf { it.isNotBlank() }?.let { "（$it）" }.orEmpty()} · ${st.kernel.label} · 已缓冲 ${bufferPct.toInt()}%" + if (speedText.isNotEmpty()) " · $speedText" else "",
             fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp),
         )
 
@@ -449,6 +453,17 @@ private fun InfoPanel(vm: PlayerViewModel, st: PlayerUiState) {
             }
             OptionRow("跳过片头 / 片尾", "仅对本剧生效", value = "${st.introSec}s / ${st.outroSec}s", onClick = { showSkip = true })
             SwitchRow("自动下一集", st.autoNext) { vm.setAutoNext(it) }
+            OptionRow("播放内核", "只对这部片子生效，卡顿 / 播不了时可以换一个试试") {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(Kernel.AUTO, Kernel.EXO, Kernel.IJK, Kernel.SYSTEM).forEach { k ->
+                        val on = k == st.kernelPick
+                        Text(if (k == Kernel.SYSTEM) "系统" else if (k == Kernel.EXO) "Exo" else k.label, fontSize = 12.sp,
+                            color = if (on) Accent else MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,
+                            modifier = Modifier.clickable { vm.pickKernel(k) }.padding(2.dp))
+                    }
+                }
+            }
             OptionRow("画面比例") {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     RATIOS.forEachIndexed { i, r ->

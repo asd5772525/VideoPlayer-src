@@ -104,6 +104,21 @@ details.adv summary{cursor:pointer;color:var(--sub);font-size:13px}
 .lrow{background:#0f1117;border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-top:8px}
 .lrow .row input[type=text]{flex:1;min-width:0}
 .box2{background:#ffffff06;border-radius:12px;padding:4px 12px 10px;margin-top:12px}
+.prow{background:#0f1117;border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-top:8px}
+.prow .row input[type=text],.prow .row input[type=url]{flex:1;min-width:0}
+.prow .row select{width:auto;flex:0 0 auto}
+.prow .pr2{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px}
+@media(max-width:520px){.prow .pr2{grid-template-columns:1fr}}
+.opt-tag{font-size:11px;color:var(--ok);background:#3ecf8e1a;border-radius:6px;padding:1px 6px;margin-left:6px;font-weight:400}
+.banner{background:#3ecf8e14;border:1px solid #3ecf8e44;border-radius:var(--r);padding:12px 14px;margin:12px 0;font-size:13px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.banner b{color:var(--ok)}
+.banner .sp{min-width:10px}
+.presets{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:8px}
+@media(min-width:640px){.presets{grid-template-columns:repeat(4,1fr)}}
+.presets label{display:block;background:#0f1117;border:1px solid var(--line);border-radius:12px;padding:10px;cursor:pointer;font-size:13px}
+.presets label small{display:block;color:var(--sub);font-size:11px;margin-top:2px;line-height:1.4}
+.presets label:has(input:checked){border-color:var(--acc);background:#ff5c8a14}
+.presets input{accent-color:var(--acc)}
 </style>
 </head>
 <body>
@@ -117,7 +132,7 @@ details.adv summary{cursor:pointer;color:var(--sub);font-size:13px}
     </div>
     <nav class="tabs" id="tabs">
       <button data-t="sources" class="on">播放源</button>
-      <button data-t="parses">解析接口</button>
+      <button data-t="parses">通用解析</button>
       <button data-t="player">播放器设置</button>
       <button data-t="notice">公告</button>
       <button data-t="release">版本与发布</button>
@@ -131,13 +146,16 @@ details.adv summary{cursor:pointer;color:var(--sub);font-size:13px}
   <!-- 播放源 -->
   <section id="t-sources" class="hidden">
     <div class="hint">💡 <b>播放源</b>就是苹果CMS（v10）的采集接口地址，例如 <code>https://your-api.example/api.php/provide/vod</code>。
-      这里添加的源会在下次发布时<b>内置到 App 里</b>。拖动卡片（或点 ↑↓）调整顺序，排在前面、带「默认」标记的源会作为 App 首页的默认源。</div>
+      这里添加的源会在下次发布时<b>内置到 App 里</b>。拖动卡片（或点 ↑↓）调整顺序，排在前面、带「默认」标记的源会作为 App 首页的默认源。<br>
+      如果某个源的播放地址不是 m3u8 / mp4 直链，可以在添加或「编辑」这个源时，顺手填上它的<b>解析接口（可选）</b>，大多数源都不需要。</div>
     <div class="row">
       <button class="btn pri big" onclick="openAdd('sources')">＋ 添加播放源</button>
       <button class="btn" onclick="openBulk('sources')">📋 批量添加</button>
       <span class="sp"></span>
       <button class="btn" onclick="runSpeedTest()" title="在 GitHub 服务器上测试所有源，不受浏览器跨域限制">⚡ 一键测速</button>
     </div>
+    <div id="speedBanner" class="banner hidden"><span>✅ <b>测速结果已保存</b>（排序 / 自动移除已写进仓库）。测速不会编译，点「编译发布」后 App 才会更新。</span><span class="sp"></span>
+      <button class="btn sm pri" onclick="save(true)">🚀 编译发布</button><button class="btn sm ghost" onclick="hideSpeedBanner()">知道了</button></div>
     <div class="sec"><h2>播放源列表 <span class="tag" id="srcCount">0</span></h2><span class="meta" id="statusTime"></span></div>
     <div id="srcList"></div>
     <div id="srcRemovedWrap" class="hidden">
@@ -146,18 +164,23 @@ details.adv summary{cursor:pointer;color:var(--sub);font-size:13px}
     </div>
   </section>
 
-  <!-- 解析接口 -->
+  <!-- 通用解析 -->
   <section id="t-parses" class="hidden">
-    <div class="hint">💡 <b>解析接口</b>用于播放「不是 m3u8 / mp4 直链」的地址。填写解析地址的<b>前缀</b>，App 会把播放地址拼在后面，例如
-      <code>https://your-parse.example/?url=</code>。<br>类型选「JSON」表示接口返回 <code>{"url":"真实地址"}</code>；选「网页嗅探」表示接口返回的是网页，App 会在后台打开网页自动抓取视频地址。</div>
+    <div class="hint">💡 <b>这一页可以不填。</b>解析接口一般跟着播放源走：在「播放源」页添加或编辑某个源时，直接在它的「解析接口（可选）」里填，只给那个源用。<br>
+      这里的<b>通用解析</b>是所有源共用的兜底：某个源自己的解析都失败了、或者没填时，App 会按测速顺序依次尝试这些。<br>
+      格式：解析地址的<b>前缀</b>，App 会把播放地址拼在后面，例如 <code>https://your-parse.example/?url=</code>；类型「JSON」= 接口返回 <code>{"url":"真实地址"}</code>，「网页嗅探」= 接口返回网页，App 在后台打开网页抓视频地址。</div>
     <div class="row">
-      <button class="btn pri big" onclick="openAdd('parses')">＋ 添加解析接口</button>
+      <button class="btn pri big" onclick="openAdd('parses')">＋ 添加通用解析</button>
       <button class="btn" onclick="openBulk('parses')">📋 批量添加</button>
       <span class="sp"></span>
       <button class="btn" onclick="runSpeedTest()">⚡ 一键测速</button>
     </div>
-    <div class="sec"><h2>解析接口列表 <span class="tag" id="parCount">0</span></h2></div>
+    <div class="sec"><h2>通用解析 <span class="tag" id="parCount">0</span> <span class="opt-tag">可选</span></h2></div>
     <div id="parList"></div>
+    <div id="parOrphanWrap" class="hidden">
+      <div class="sec"><h2>所属播放源已被移除的专属解析</h2><span class="meta">恢复对应的播放源后自动生效</span></div>
+      <div id="parOrphan"></div>
+    </div>
     <div id="parRemovedWrap" class="hidden">
       <div class="sec"><h2>已自动移除的解析</h2></div>
       <div id="parRemoved"></div>
@@ -166,7 +189,8 @@ details.adv summary{cursor:pointer;color:var(--sub);font-size:13px}
 
   <!-- 播放器 -->
   <section id="t-player" class="hidden">
-    <div class="hint">💡 这些是 App 的<b>默认设置</b>。用户在 App 里自己改过的设置会保留，不会被覆盖。</div>
+    <div class="hint">💡 这些是 App 的<b>默认设置</b>。用户在 App 里自己改过的设置会保留，不会被覆盖。<br>
+      <b>播放内核</b>：「自动」= 先用 ExoPlayer（起播快、去广告最完整），遇到它不支持的格式自动换 IJK（FFmpeg，格式最全）。每个播放源也可以在「编辑」里单独指定首选内核。</div>
     <div class="card" id="playerForm"></div>
   </section>
 
@@ -184,7 +208,8 @@ details.adv summary{cursor:pointer;color:var(--sub);font-size:13px}
 
   <!-- 版本与发布 -->
   <section id="t-release" class="hidden">
-    <div class="hint">💡 <b>发布流程</b>：改好配置 → 点底部「保存并编译发布」→ GitHub 自动编译 APK（约 5~10 分钟）→ 自动创建 Release 并更新 update.json → 已安装的 App 下次检查时弹出更新。</div>
+    <div class="hint">💡 <b>发布流程</b>：改好配置 → 点底部「保存并编译发布」→ GitHub 自动编译 APK（约 5~10 分钟）→ 自动创建 Release 并更新 update.json → 已安装的 App 下次检查时弹出更新。<br>
+      <b>只有点「编译发布」才会编译。</b>「仅保存」和「一键测速」都只把结果存进仓库，不会编译、不会推送更新。</div>
     <div class="card">
       <div class="sec" style="margin-top:0"><h2>下一次发布</h2></div>
       <label class="f">更新说明（每行一条，会显示在 App 的更新弹窗里）</label>
@@ -271,24 +296,48 @@ async function dispatch(workflow, inputs) {
 }
 
 /* ================= 状态 ================= */
-const DEFAULT_CFG = { configVersion: 1, sources: [], parses: [], player: { bufferSeconds: 30, hwDecode: true, preloadNext: true, autoNext: true, skipIntro: 0, skipOutro: 0, defaultSpeed: 1.0, longPressSpeed: 3.0, directFirst: true, autoSpeedTest: true, downloadConcurrency: 8, maxDownloadTasks: 2 }, notice: { enabled: false, id: 'notice-1', title: '公告', text: '', link: '' } };
+const DEFAULT_CFG = { configVersion: 1, sources: [], parses: [], player: { bufferSeconds: 30, hwDecode: true, preloadNext: true, autoNext: true, skipIntro: 0, skipOutro: 0, defaultSpeed: 1.0, longPressSpeed: 3.0, directFirst: true, autoSpeedTest: true, downloadConcurrency: 8, maxDownloadTasks: 2, kernel: 'auto', preset: 'balanced', minBufferSeconds: 15, startMs: 1000, rebufferMs: 2000, cacheMb: 512, connectTimeout: 8, readTimeout: 15, dnsPrefetch: true, parseRace: true }, notice: { enabled: false, id: 'notice-1', title: '公告', text: '', link: '' } };
 let cfg = null, cfgSha = null, cfgOrig = '', cfgBase = '';
 let status = { sources: {}, parses: {} };
 let removed = [], removedSha = null, removedOrig = '[]';
 let editing = null; // {kind, idx}
 const pretty = o => JSON.stringify(o, null, 2) + '\n';
 
+/* 写在播放源里的解析对象（手改 config.json 时可以这么写）→ 挪到顶层 parses（owner = 源 key），源里只留 key。和 App 的 ConfigNormalizer 规则一致 */
+function hoistInline(c) {
+  const parses = Array.isArray(c.parses) ? c.parses : (c.parses = []);
+  const used = new Set(parses.map(p => p && p.key).filter(Boolean));
+  (c.sources || []).forEach((s, si) => {
+    if (!s || typeof s !== 'object') return;
+    let n = 0, sKey = s.key || 's' + (si + 1);
+    const hoist = arr => !Array.isArray(arr) ? arr : arr.map(x => {
+      if (!x || typeof x !== 'object') return x;
+      const url = String(x.url || '').trim(); if (!url) return null;
+      if (!s.key) s.key = sKey;
+      if (x.key && parses.some(p => p.key === x.key && String(p.url || '').trim() === url)) return x.key;
+      let key = x.key; if (!key || used.has(key)) { do { key = sKey + '_p' + (++n) } while (used.has(key)) }
+      used.add(key); parses.push({ ...x, key, url, owner: x.owner || sKey }); return key;
+    }).filter(Boolean);
+    s.parses = hoist(s.parses);
+    if (s.lineParses && typeof s.lineParses === 'object' && !Array.isArray(s.lineParses)) Object.keys(s.lineParses).forEach(k => { s.lineParses[k] = hoist(s.lineParses[k]) });
+  });
+  return c;
+}
+const KERNELS = [['', '跟随 App 设置（默认）'], ['exo', 'ExoPlayer'], ['ijk', 'IJK（格式最全）'], ['system', '系统播放器']];
+const KERNEL_NAME = { auto: '自动', exo: 'ExoPlayer', ijk: 'IJK', system: '系统播放器' };
 function normalize(c) {
+  c = hoistInline(JSON.parse(JSON.stringify(c || {})));
   c = Object.assign(JSON.parse(JSON.stringify(DEFAULT_CFG)), c || {});
   c.player = Object.assign({}, DEFAULT_CFG.player, c.player || {});
   c.notice = Object.assign({}, DEFAULT_CFG.notice, c.notice || {});
   c.sources = (c.sources || []).map(s => ({ key: s.key || uid('s'), name: s.name || '', api: cleanApi(s.api), type: s.type || detectType(s.api || ''), enabled: s.enabled !== false, order: s.order || 0, default: !!s.default,
     parses: Array.isArray(s.parses) ? s.parses.filter(k => typeof k === 'string' && k) : [],
     lineParses: (s.lineParses && typeof s.lineParses === 'object' && !Array.isArray(s.lineParses)) ? Object.fromEntries(Object.entries(s.lineParses).filter(([n, v]) => n && Array.isArray(v)).map(([n, v]) => [n, v.filter(k => typeof k === 'string' && k)])) : {},
-    adFilter: s.adFilter && typeof s.adFilter === 'object' ? normAd(s.adFilter) : null }));
+    adFilter: s.adFilter && typeof s.adFilter === 'object' ? normAd(s.adFilter) : null,
+    kernel: ['exo', 'ijk', 'system'].includes(String(s.kernel || '').toLowerCase()) ? String(s.kernel).toLowerCase() : '' }));
   c.parses = (c.parses || []).map(p => ({ key: p.key || uid('p'), name: p.name || '', url: p.url || '', type: p.type || 'json', enabled: p.enabled !== false, order: p.order || 0,
     headers: (p.headers && typeof p.headers === 'object') ? Object.fromEntries(Object.entries(p.headers).filter(([k, v]) => k && v != null).map(([k, v]) => [k, String(v)])) : {},
-    timeout: Math.max(0, Math.min(60, parseInt(p.timeout) || 0)), jsonPath: String(p.jsonPath || '') }));
+    timeout: Math.max(0, Math.min(60, parseInt(p.timeout) || 0)), jsonPath: String(p.jsonPath || ''), owner: String(p.owner || '') }));
   return c;
 }
 const AD_MAX_DEFAULT = 30;
@@ -304,12 +353,14 @@ function finalCfg() {
     Object.keys(s.lineParses || {}).forEach(n => { if (!s.lineParses[n].length) delete s.lineParses[n] });
     if (!s.lineParses || !Object.keys(s.lineParses).length) delete s.lineParses;
     if (adIsDefault(s.adFilter)) delete s.adFilter;
+    if (!s.kernel) delete s.kernel;
   });
   c.parses.forEach((p, i) => {
     p.order = i + 1; if (!p.name) p.name = hostOf(p.url);
     if (!p.headers || !Object.keys(p.headers).length) delete p.headers;
     if (!p.timeout) delete p.timeout;
     if (!p.jsonPath) delete p.jsonPath;
+    if (!p.owner) delete p.owner;
   });
   if (c.sources.length && !c.sources.some(s => s.default)) c.sources[0].default = true;
   return c;
@@ -377,13 +428,20 @@ function statusHtml(kind, url) {
   return { dot: st.ok ? 'ok' : 'bad', text: `${lat} · 上次检测 ${ago(st.lastCheck)}${fail}${st.error && !st.ok ? ' · ' + esc(st.error) : ''}` };
 }
 
+/* 解析是否显示在「通用解析」页：通用的（没有 owner） */
+const isGlobal = p => !p.owner;
+const srcKeys = () => new Set(cfg.sources.map(s => s.key));
 function renderList(kind) {
   const list = cfg[kind], isSrc = kind === 'sources', field = isSrc ? 'api' : 'url';
   const box = $(isSrc ? '#srcList' : '#parList');
-  $(isSrc ? '#srcCount' : '#parCount').textContent = list.length;
+  const visible = isSrc ? list.length : list.filter(isGlobal).length;
+  $(isSrc ? '#srcCount' : '#parCount').textContent = visible;
   if (isSrc && status.updatedAt) $('#statusTime').textContent = '测速于 ' + ago(status.updatedAt);
-  if (!list.length) box.innerHTML = `<div class="empty">还没有${isSrc ? '播放源' : '解析接口'}，点上方「＋ 添加${isSrc ? '播放源' : '解析接口'}」开始吧</div>`;
+  if (!isSrc) renderOrphans();
+  if (!visible) box.innerHTML = isSrc ? `<div class="empty">还没有播放源，点上方「＋ 添加播放源」开始吧</div>`
+    : `<div class="empty">没有通用解析（可以不填）。<br>某个源需要解析时，建议在「播放源」页编辑那个源，在它的「解析接口（可选）」里添加。</div>`;
   else box.innerHTML = list.map((it, i) => {
+    if (!isSrc && !isGlobal(it)) return '';
     const st = statusHtml(kind, it[field]);
     if (editing && editing.kind === kind && editing.idx === i) return editCard(kind, it, i);
     const typeTag = isSrc ? `<span class="tag">${it.type === 'xml' ? 'XML' : 'JSON'}</span>` : `<span class="tag">${it.type === 'webview' ? '网页嗅探' : 'JSON'}</span>`;
@@ -396,8 +454,8 @@ function renderList(kind) {
       <div class="meta">${st.text}</div>
       ${isSrc ? sourceChips(it) : parseChips(it)}
       <div class="acts">
-        <button class="btn sm" onclick="move('${kind}',${i},-1)" ${i === 0 ? 'disabled' : ''}>↑</button>
-        <button class="btn sm" onclick="move('${kind}',${i},1)" ${i === list.length - 1 ? 'disabled' : ''}>↓</button>
+        <button class="btn sm" onclick="move('${kind}',${i},-1)" ${neighbor(kind, i, -1) < 0 ? 'disabled' : ''}>↑</button>
+        <button class="btn sm" onclick="move('${kind}',${i},1)" ${neighbor(kind, i, 1) < 0 ? 'disabled' : ''}>↓</button>
         ${isSrc && !it.default ? `<button class="btn sm" onclick="setDefault(${i})">设为默认</button>` : ''}
         <button class="btn sm" onclick="testOne('${kind}',${i},this)">测试</button>
         <button class="btn sm" onclick="startEdit('${kind}',${i})">编辑</button>
@@ -408,7 +466,7 @@ function renderList(kind) {
   // 已移除
   const rm = removed.map((r, ri) => ({ r, ri })).filter(x => x.r.kind === kind);
   $(isSrc ? '#srcRemovedWrap' : '#parRemovedWrap').classList.toggle('hidden', !rm.length);
-  $(isSrc ? '#srcRemoved' : '#parRemoved').innerHTML = rm.map(({ r, ri }) => `<div class="card off"><div class="ch"><span class="dot bad"></span><span class="name">${esc(r.item.name || hostOf(r.item[field]))}</span>
+  $(isSrc ? '#srcRemoved' : '#parRemoved').innerHTML = rm.map(({ r, ri }) => `<div class="card off"><div class="ch"><span class="dot bad"></span><span class="name">${esc(r.item.name || hostOf(r.item[field]))}${!isSrc && r.item.owner ? ` <span class="tag">「${esc(srcName(r.item.owner))}」专属</span>` : ''}</span>
      <button class="btn sm pri" onclick="restore(${ri})">恢复</button><button class="btn sm ghost" onclick="forget(${ri})">永久删除</button></div>
      <div class="url">${esc(r.item[field])}</div><div class="meta">${esc(r.reason || '')} · 移除于 ${ago(r.removedAt)}</div></div>`).join('');
 }
@@ -420,11 +478,22 @@ function parseLabel(k) {
   const r = removed.find(x => x.kind === 'parses' && x.item.key === k); if (r) return { name: (r.item.name || hostOf(r.item.url)) + '（已自动下架）', gone: false, off: true };
   return { name: k + '（已删除）', gone: true };
 }
-function chip(k) { const l = parseLabel(k); return `<span class="chip ${l.gone ? 'gone' : l.off ? 'off' : ''}" title="${esc(l.name)}">${esc(l.name)}</span>` }
+function chip(k) {
+  const l = parseLabel(k), p = cfg.parses.find(x => x.key === k), st = p && statusOf('parses', p.url);
+  const lat = st ? (st.ok ? ` · ${st.latency}ms` : ' · 失败') : '';
+  return `<span class="chip ${l.gone ? 'gone' : l.off ? 'off' : ''}" title="${esc(l.name + (p ? ' ' + p.url : ''))}">${esc(l.name)}${lat}</span>`
+}
+function srcName(key) { const s = (cfg.sources || []).find(x => x.key === key) || (removed.find(r => r.kind === 'sources' && r.item.key === key) || {}).item; return s ? (s.name || hostOf(s.api)) : key }
+function ownedOf(src) { return cfg.parses.filter(p => p.owner === src.key) }
+/* 专属解析限定了哪些线路：{key: [线路名]} */
+function ownedLines(src) { const m = {}; Object.entries(src.lineParses || {}).forEach(([n, ks]) => ks.forEach(k => { (m[k] = m[k] || []).push(n) })); return m }
 function sourceChips(it) {
-  const parts = [];
-  if ((it.parses || []).length) parts.push(`<span class="meta">🔗 优先解析</span>${it.parses.map(chip).join('')}`);
-  Object.entries(it.lineParses || {}).forEach(([n, ks]) => { if (ks.length) parts.push(`<span class="meta">线路「${esc(n)}」</span>${ks.map(chip).join('')}`) });
+  const parts = [], owned = ownedOf(it), ownKeys = new Set(owned.map(p => p.key)), lines = ownedLines(it);
+  if (owned.length) parts.push(`<span class="meta">🔗 解析接口</span>${owned.map(p => chip(p.key) + (lines[p.key] && !(it.parses || []).includes(p.key) ? `<span class="meta">（仅线路 ${esc(lines[p.key].join('、'))}）</span>` : '')).join('')}`);
+  const g = (it.parses || []).filter(k => !ownKeys.has(k));
+  if (g.length) parts.push(`<span class="meta">优先通用解析</span>${g.map(chip).join('')}`);
+  Object.entries(it.lineParses || {}).forEach(([n, ks]) => { const gk = ks.filter(k => !ownKeys.has(k)); if (gk.length) parts.push(`<span class="meta">线路「${esc(n)}」</span>${gk.map(chip).join('')}`) });
+  if (it.kernel) parts.push(`<span class="chip off">内核：${esc(KERNEL_NAME[it.kernel] || it.kernel)}</span>`);
   const a = it.adFilter;
   if (a && !a.enabled) parts.push('<span class="chip off">去广告：本源关闭</span>');
   else if (a && (a.keywords.length || a.regex)) parts.push(`<span class="chip ad">去广告：智能 + ${a.keywords.length} 个关键词${a.regex ? ' + 正则' : ''}</span>`);
@@ -437,12 +506,13 @@ function parseChips(it) {
   if (it.timeout) parts.push(`<span class="chip off">超时 ${it.timeout}s</span>`);
   if (it.jsonPath) parts.push(`<span class="chip off">字段 ${esc(it.jsonPath)}</span>`);
   const n = cfg.sources.filter(s => (s.parses || []).includes(it.key) || Object.values(s.lineParses || {}).some(v => v.includes(it.key))).length;
-  if (n) parts.push(`<span class="chip">被 ${n} 个播放源绑定</span>`);
+  if (n) parts.push(`<span class="chip">被 ${n} 个播放源优先使用</span>`);
   return parts.length ? `<div class="chips">${parts.join('')}</div>` : '';
 }
 function parseChecks(name, selected) {
-  if (!cfg.parses.length) return '<div class="meta">还没有解析接口。先到「解析接口」页添加，再回来勾选。</div>';
-  return `<div class="checks">${cfg.parses.map(p => `<label><input type="checkbox" name="${name}" value="${esc(p.key)}" ${selected.includes(p.key) ? 'checked' : ''}><span>${esc(p.name || hostOf(p.url))}${p.enabled ? '' : '（已停用）'}</span></label>`).join('')}</div>`;
+  const g = cfg.parses.filter(isGlobal);
+  if (!g.length) return '<div class="meta">还没有通用解析（「通用解析」页，可以不填）。</div>';
+  return `<div class="checks">${g.map(p => `<label><input type="checkbox" name="${name}" value="${esc(p.key)}" ${selected.includes(p.key) ? 'checked' : ''}><span>${esc(p.name || hostOf(p.url))}${p.enabled ? '' : '（已停用）'}</span></label>`).join('')}</div>`;
 }
 function lineRow(name, keys) {
   const id = uid('lr');
@@ -451,20 +521,86 @@ function lineRow(name, keys) {
 }
 function addLineRow() { $('#e_lines').insertAdjacentHTML('beforeend', lineRow('', [])) }
 
+/* 播放源自己的解析接口：每行一个（名称可选 / 地址 / 类型 / 只用于线路 / 高级） */
+function parseRow(p, lines) {
+  p = p || { key: '', name: '', url: '', type: 'json', headers: {}, timeout: 0, jsonPath: '' };
+  const h = p.headers || {}, adv = h.Referer || h['User-Agent'] || p.timeout || p.jsonPath || (lines && lines.length);
+  return `<div class="prow" data-key="${esc(p.key)}">
+    <div class="row"><input type="url" class="pr_url" value="${esc(p.url)}" placeholder="解析地址前缀，如 https://your-parse.example/?url=">
+      <select class="pr_type" title="类型"><option value="json" ${p.type !== 'webview' ? 'selected' : ''}>JSON</option><option value="webview" ${p.type === 'webview' ? 'selected' : ''}>网页嗅探</option></select>
+      <button class="btn sm ghost" onclick="this.closest('.prow').remove()" title="删除这个解析">✕</button></div>
+    <div class="pr2"><input type="text" class="pr_name" value="${esc(p.name)}" placeholder="名称（可留空，自动用域名）"></div>
+    <details class="adv" ${adv ? 'open' : ''}><summary>高级（可不填）：请求头 / 超时 / 返回字段 / 只用于某些线路</summary>
+      <div class="pr2"><input type="text" class="pr_ref" value="${esc(h.Referer || '')}" placeholder="Referer（可选）"><input type="text" class="pr_ua" value="${esc(h['User-Agent'] || '')}" placeholder="User-Agent（可选）"></div>
+      <div class="pr2"><input type="number" class="pr_to" min="0" max="60" value="${p.timeout || ''}" placeholder="超时秒数（可选）" title="超时秒数，空 = 默认"><input type="text" class="pr_jp" value="${esc(p.jsonPath || '')}" placeholder="JSON 字段，如 data.url（可选）"></div>
+      <div class="pr2"><input type="text" class="pr_lines" value="${esc((lines || []).join(', '))}" placeholder="只用于这些线路（可选，逗号分隔，如 m3u8）"></div>
+      <div class="meta">超时留空 = 默认（JSON 10 秒，网页嗅探 15 秒）。线路名和片源里的 vod_play_from 一样；留空 = 这个源的所有线路都用。</div>
+    </details></div>`;
+}
+function parseRowsBox(src) {
+  const lines = src ? ownedLines(src) : {}, owned = src ? ownedOf(src) : [];
+  return `<div class="box2"><label class="f">解析接口 <span class="opt-tag">可选</span> <span class="help" title="播放地址不是 m3u8 / mp4 直链时才需要。可以填多个，按顺序尝试。">?</span></label>
+    <div class="meta">大多数源是直链，<b>不用填</b>。只有这个源的播放地址是网页（不是 m3u8 / mp4）时，才需要填解析接口；填了只给这个源用，按顺序尝试。</div>
+    <div class="prows">${owned.map(p => parseRow(p, (src.parses || []).includes(p.key) ? [] : lines[p.key])).join('')}</div>
+    <button class="btn sm" style="margin-top:8px" onclick="addParseRow(this)">＋ 添加解析接口</button></div>`;
+}
+function addParseRow(btn) { const box = btn.parentElement.querySelector('.prows'); box.insertAdjacentHTML('beforeend', parseRow(null, [])); box.lastElementChild.querySelector('.pr_url').focus() }
+/* 读取解析行：返回 {rows:[{key,name,url,type,headers,timeout,jsonPath,lines}], err} */
+function readParseRows(root) {
+  const rows = [], seen = new Set();
+  for (const el of root.querySelectorAll('.prow')) {
+    const url = el.querySelector('.pr_url').value.trim(), name = el.querySelector('.pr_name').value.trim();
+    const ref = el.querySelector('.pr_ref').value.trim(), ua = el.querySelector('.pr_ua').value.trim(), jp = el.querySelector('.pr_jp').value.trim();
+    const lines = [...new Set(el.querySelector('.pr_lines').value.split(/[,，、\s]+/).map(x => x.trim()).filter(Boolean))];
+    if (!url && !name && !ref && !ua && !jp && !lines.length) continue;
+    if (!isUrl(url)) return { err: `解析接口「${name || url || '未填写'}」的地址需要以 http:// 或 https:// 开头` };
+    if (seen.has(url)) return { err: `解析接口地址重复了：${url}` }; seen.add(url);
+    if (ref && !isUrl(ref)) return { err: '解析接口的 Referer 需要是完整地址（http:// 或 https:// 开头）' };
+    const headers = {}; if (ref) headers.Referer = ref; if (ua) headers['User-Agent'] = ua;
+    rows.push({ key: el.dataset.key || '', name: name || hostOf(url), url, type: el.querySelector('.pr_type').value, headers,
+      timeout: Math.max(0, Math.min(60, parseInt(el.querySelector('.pr_to').value) || 0)), jsonPath: jp, lines });
+  }
+  return { rows };
+}
+/* 把解析行写回 cfg：更新 / 新增 / 删除这个源的专属解析；返回 {own: 不限线路的 key 列表, lineMap: {线路: [key]}} */
+function applyOwnedParses(src, rows) {
+  const keep = new Set(), own = [], lineMap = {};
+  rows.forEach(r => {
+    let p = r.key && cfg.parses.find(x => x.key === r.key && x.owner === src.key);
+    if (p) {
+      // 保留手写在 config.json 里的其他请求头
+      Object.entries(p.headers || {}).forEach(([k, v]) => { if (k !== 'Referer' && k !== 'User-Agent') r.headers[k] = v });
+      Object.assign(p, { name: r.name, url: r.url, type: r.type, headers: r.headers, timeout: r.timeout, jsonPath: r.jsonPath });
+    } else { p = { key: uid('p'), name: r.name, url: r.url, type: r.type, enabled: true, order: 0, headers: r.headers, timeout: r.timeout, jsonPath: r.jsonPath, owner: src.key }; cfg.parses.push(p) }
+    keep.add(p.key);
+    if (r.lines.length) r.lines.forEach(n => (lineMap[n] = lineMap[n] || []).push(p.key)); else own.push(p.key);
+  });
+  const gone = cfg.parses.filter(p => p.owner === src.key && !keep.has(p.key)).map(p => p.key);
+  cfg.parses = cfg.parses.filter(p => !(p.owner === src.key && !keep.has(p.key)));
+  gone.forEach(unbind);
+  return { own, lineMap };
+}
+function kernelSelect(id, v) { return `<select id="${id}">${KERNELS.map(([k, l]) => `<option value="${k}" ${k === (v || '') ? 'selected' : ''}>${l}</option>`).join('')}</select>` }
+
 function editCard(kind, it, i) {
   const isSrc = kind === 'sources', field = isSrc ? 'api' : 'url';
   let extra = '';
   if (isSrc) {
     const a = it.adFilter || normAd({});
-    extra = `<div class="box2">
-      <label class="f">绑定解析接口 <span class="help" title="这个源的片子优先用勾选的解析；没勾选的解析排在后面依旧可用。不勾 = 全部按测速顺序。">?</span></label>
-      <div class="meta">这个源的视频不是直链时，优先用勾选的解析（按列表顺序）。不勾 = 按测速顺序使用全部解析。</div>
-      ${parseChecks('e_parses', it.parses)}
-      <details class="adv" ${Object.keys(it.lineParses || {}).length ? 'open' : ''}><summary>按线路单独绑定（高级，可不填）</summary>
-        <div class="meta" style="margin-top:6px">同一个源里不同线路要用不同解析时才需要。线路规则优先于上面的绑定。</div>
-        <div id="e_lines">${Object.entries(it.lineParses || {}).map(([n, ks]) => lineRow(n, ks)).join('')}</div>
-        <button class="btn sm" style="margin-top:8px" onclick="addLineRow()">＋ 添加线路规则</button>
-      </details></div>
+    const own = new Set(ownedOf(it).map(p => p.key));
+    const gParses = it.parses.filter(k => !own.has(k));
+    const gLines = Object.fromEntries(Object.entries(it.lineParses || {}).map(([n, ks]) => [n, ks.filter(k => !own.has(k))]).filter(([, ks]) => ks.length));
+    extra = `${parseRowsBox(it)}
+    <details class="adv box2" ${gParses.length || Object.keys(gLines).length ? 'open' : ''}><summary>优先使用哪些「通用解析」（高级，可不填）</summary>
+      <div class="meta" style="margin-top:6px">通用解析是所有源共用的兜底（在「通用解析」页管理）。勾选的会排在这个源的通用解析前面；不勾 = 按测速顺序全部可用。</div>
+      ${parseChecks('e_parses', gParses)}
+      <div class="meta" style="margin-top:8px">按线路指定通用解析（同一个源不同线路用不同解析时才需要，优先于上面的勾选）：</div>
+      <div id="e_lines">${Object.entries(gLines).map(([n, ks]) => lineRow(n, ks)).join('')}</div>
+      <button class="btn sm" style="margin-top:8px" onclick="addLineRow()">＋ 添加线路规则</button>
+    </details>
+    <div class="box2"><label class="f">首选播放内核 <span class="opt-tag">可选</span></label>
+      ${kernelSelect('e_kernel', it.kernel)}
+      <div class="meta">只在 App 里选「自动」内核时生效。这个源的视频 ExoPlayer 经常播不了（比如特殊编码）时，可以指定 IJK。</div></div>
     <div class="box2">
       <div class="opt"><div class="l">去除插播广告<small>App 会自动识别 M3U8 中间插的短广告（最多去掉 20%）。关闭 = 这个源完全不过滤。</small></div>
         <label class="sw"><input type="checkbox" id="e_ad" ${a.enabled ? 'checked' : ''} onchange="$('#e_adbox').classList.toggle('hidden',!this.checked)"><span></span></label></div>
@@ -510,7 +646,9 @@ function saveEdit(kind, i) {
   const patch = { name: name || hostOf(url), [field]: url, type: $('#e_type').value };
   if (isSrc) {
     const checked = n => [...document.querySelectorAll(`input[name="${n}"]:checked`)].map(x => x.value);
-    patch.parses = checked('e_parses');
+    const pr = readParseRows($('#e_err').closest('.card'));
+    if (pr.err) { $('#e_err').textContent = pr.err; return }
+    const gChecked = checked('e_parses');
     const lp = {};
     for (const row of document.querySelectorAll('#e_lines .lrow')) {
       const n = row.querySelector('.lr_name').value.trim(), ks = checked(row.dataset.lr);
@@ -520,12 +658,17 @@ function saveEdit(kind, i) {
       if (lp[n]) { $('#e_err').textContent = `线路「${n}」重复了`; return }
       lp[n] = ks;
     }
-    patch.lineParses = lp;
     const kw = $('#e_adkw').value.split(/\n/).map(x => x.trim()).filter(Boolean), re = $('#e_adre').value.trim();
     if (re) { try { new RegExp(re) } catch (e) { $('#e_err').textContent = '去广告正则写法有误：' + e.message; return } }
     const max = Math.max(5, Math.min(300, parseInt($('#e_admax').value) || AD_MAX_DEFAULT));
     patch.adFilter = $('#e_ad').checked ? normAd({ enabled: true, keywords: [...new Set(kw)], regex: re, discontinuityMax: max }) : normAd({ enabled: false, keywords: kw, regex: re, discontinuityMax: max });
     if (adIsDefault(patch.adFilter)) patch.adFilter = null;
+    patch.kernel = $('#e_kernel').value;
+    // 所有校验都通过了，才写回专属解析
+    const { own, lineMap } = applyOwnedParses(cfg.sources[i], pr.rows);
+    patch.parses = [...own, ...gChecked];
+    Object.entries(lineMap).forEach(([n, ks]) => { lp[n] = [...ks, ...(lp[n] || []).filter(k => !ks.includes(k))] });
+    patch.lineParses = lp;
   } else {
     const h = {}, ref = $('#e_ref').value.trim(), ua = $('#e_ua').value.trim();
     if (ref && !isUrl(ref)) { $('#e_err').textContent = 'Referer 需要是完整地址（http:// 或 https:// 开头）'; return }
@@ -537,20 +680,25 @@ function saveEdit(kind, i) {
     patch.jsonPath = $('#e_jp').value.trim();
   }
   Object.assign(cfg[kind][i], patch);
-  editing = null; renderList(kind); if (!isSrc) renderList('sources'); refreshBar();
+  editing = null; renderList(kind); renderList(isSrc ? 'parses' : 'sources'); refreshBar();
 }
 function toggleEnabled(kind, i, v) { cfg[kind][i].enabled = v; renderList(kind); refreshBar() }
-function move(kind, i, d) { const l = cfg[kind], j = i + d; if (j < 0 || j >= l.length) return;[l[i], l[j]] = [l[j], l[i]]; renderList(kind); refreshBar() }
+/* 上 / 下一个可见条目的下标（通用解析页不显示专属解析，跳过它们） */
+function neighbor(kind, i, d) { const l = cfg[kind]; for (let j = i + d; j >= 0 && j < l.length; j += d) if (kind === 'sources' || isGlobal(l[j])) return j; return -1 }
+function move(kind, i, d) { const l = cfg[kind], j = neighbor(kind, i, d); if (j < 0) return;[l[i], l[j]] = [l[j], l[i]]; renderList(kind); refreshBar() }
 function setDefault(i) { cfg.sources.forEach((s, j) => s.default = j === i); renderList('sources'); refreshBar(); toast('已设为默认源') }
 function boundBy(key) { return cfg.sources.filter(s => (s.parses || []).includes(key) || Object.values(s.lineParses || {}).some(v => v.includes(key))) }
 function unbind(key) { cfg.sources.forEach(s => { s.parses = s.parses.filter(k => k !== key); Object.keys(s.lineParses || {}).forEach(n => { s.lineParses[n] = s.lineParses[n].filter(k => k !== key); if (!s.lineParses[n].length) delete s.lineParses[n] }) }) }
 function del(kind, i) {
   const it = cfg[kind][i];
   const users = kind === 'parses' ? boundBy(it.key) : [];
-  const extra = users.length ? `\n\n有 ${users.length} 个播放源绑定了它（${users.map(s => s.name || hostOf(s.api)).join('、')}），删除后会自动解除绑定。` : '';
+  const owned = kind === 'sources' ? ownedOf(it) : [];
+  const extra = users.length ? `\n\n有 ${users.length} 个播放源优先使用它（${users.map(s => s.name || hostOf(s.api)).join('、')}），删除后会自动解除。`
+    : owned.length ? `\n\n这个源自己的 ${owned.length} 个解析接口也会一起删除。` : '';
   if (!confirm(`确定删除「${it.name || hostOf(it.api || it.url)}」吗？${extra}\n（保存后生效，可在底部「预览修改」中确认）`)) return;
   cfg[kind].splice(i, 1);
   if (kind === 'parses') { unbind(it.key); renderList('sources') }
+  else if (owned.length) { cfg.parses = cfg.parses.filter(p => p.owner !== it.key); renderList('parses') }
   renderList(kind); refreshBar();
 }
 /* 失效绑定：绑定的 key 既不在解析列表、也不在“已自动下架”列表里（通常是手改 config.json 留下的） */
@@ -566,10 +714,17 @@ function cleanDangling() {
   danglingBindings().forEach(({ keys }) => keys.forEach(unbind));
   closeModal(); renderAll(); toast('已清理失效的解析绑定，记得保存');
 }
+function renderOrphans() {
+  const keys = srcKeys(), list = cfg.parses.map((p, i) => ({ p, i })).filter(x => x.p.owner && !keys.has(x.p.owner));
+  $('#parOrphanWrap').classList.toggle('hidden', !list.length);
+  $('#parOrphan').innerHTML = list.map(({ p, i }) => `<div class="card off"><div class="ch"><span class="name">${esc(p.name || hostOf(p.url))} <span class="tag">「${esc(srcName(p.owner))}」专属</span></span>
+    <button class="btn sm ghost" onclick="delOrphan(${i})">删除</button></div><div class="url">${esc(p.url)}</div></div>`).join('');
+}
+function delOrphan(i) { if (!confirm('删除这个解析接口？')) return; cfg.parses.splice(i, 1); renderList('parses'); refreshBar() }
 function restore(ri) {
   const r = removed[ri], field = r.kind === 'sources' ? 'api' : 'url';
   if (!cfg[r.kind].some(x => x[field] === r.item[field])) cfg[r.kind].push(normalize({ [r.kind]: [r.item] })[r.kind][0]);
-  removed.splice(ri, 1); renderList(r.kind); refreshBar(); toast('已恢复，保存后生效');
+  removed.splice(ri, 1); renderList(r.kind); renderList(r.kind === 'sources' ? 'parses' : 'sources'); refreshBar(); toast('已恢复，保存后生效');
 }
 function forget(ri) { if (!confirm('永久删除这条记录？')) return; const k = removed[ri].kind; removed.splice(ri, 1); renderList(k); refreshBar() }
 
@@ -636,9 +791,11 @@ function openAdd(kind) {
     <div class="err" id="a_err"></div>
     ${isSrc ? '<div class="meta" id="a_type"></div>' : `<label class="f">类型</label><select id="a_ptype"><option value="json">JSON（接口返回 url 字段）</option><option value="webview">网页嗅探（接口返回网页）</option></select>`}
     <div id="a_res"></div>
+    ${isSrc ? `<details class="adv" id="a_pbox"><summary>这个源需要解析接口吗？<span class="opt-tag">可选</span>（大多数不需要，点开添加）</summary>${parseRowsBox(null)}</details>` : ''}
     <div class="foot">${isSrc ? '<button class="btn" id="a_test">测试</button>' : ''}<span class="sp"></span>
       <button class="btn ghost" onclick="closeModal()">取消</button><button class="btn pri" id="a_ok">添加</button></div>`);
   const u = $('#a_url'); u.focus();
+  $('#modalRoot .mbox').addEventListener('input', () => { $('#a_err').textContent = '' });
   u.oninput = () => { $('#a_err').textContent = ''; if (isSrc) $('#a_type').textContent = u.value ? '识别为：' + (detectType(u.value) === 'xml' ? 'XML 格式' : 'JSON 格式') : '' };
   if (isSrc) $('#a_test').onclick = async () => {
     const url = u.value.trim(); if (!isUrl(url)) { $('#a_err').textContent = '请先填写完整地址'; return }
@@ -648,10 +805,16 @@ function openAdd(kind) {
   $('#a_ok').onclick = () => {
     const url = u.value.trim(), name = $('#a_name').value.trim(), field = isSrc ? 'api' : 'url';
     if (!isUrl(url)) { $('#a_err').textContent = '请填写以 http:// 或 https:// 开头的完整地址'; return }
-    if (cfg[kind].some(x => x[field] === url)) { $('#a_err').textContent = '这个地址已经添加过了'; return }
-    cfg[kind].push(isSrc ? { key: uid('s'), name: name || hostOf(url), api: cleanApi(url), type: detectType(url), enabled: true, order: 0, default: cfg.sources.length === 0, parses: [], lineParses: {}, adFilter: null }
-      : { key: uid('p'), name: name || hostOf(url), url, type: $('#a_ptype').value, enabled: true, order: 0, headers: {}, timeout: 0, jsonPath: '' });
-    closeModal(); renderList(kind); refreshBar(); toast('已添加，记得点底部「保存并编译发布」');
+    if (cfg[kind].some(x => x[field] === url && (isSrc || isGlobal(x)))) { $('#a_err').textContent = '这个地址已经添加过了'; return }
+    const pr = isSrc ? readParseRows($('#a_pbox')) : { rows: [] };
+    if (pr.err) { $('#a_err').textContent = pr.err; $('#a_pbox').open = true; return }
+    if (isSrc) {
+      const src = { key: uid('s'), name: name || hostOf(url), api: cleanApi(url), type: detectType(url), enabled: true, order: 0, default: cfg.sources.length === 0, parses: [], lineParses: {}, adFilter: null, kernel: '' };
+      cfg.sources.push(src);
+      const { own, lineMap } = applyOwnedParses(src, pr.rows); src.parses = own; src.lineParses = lineMap;
+    } else cfg.parses.push({ key: uid('p'), name: name || hostOf(url), url, type: $('#a_ptype').value, enabled: true, order: 0, headers: {}, timeout: 0, jsonPath: '', owner: '' });
+    closeModal(); renderList('sources'); renderList('parses'); refreshBar();
+    toast(isSrc && pr.rows.length ? `已添加（含 ${pr.rows.length} 个解析接口），记得点底部「保存并编译发布」` : '已添加，记得点底部「保存并编译发布」');
   };
 }
 
@@ -667,9 +830,9 @@ function openBulk(kind) {
     $('#b_text').value.split(/\n/).map(l => l.trim()).filter(Boolean).forEach(line => {
       const m = line.match(/https?:\/\/\S+/i); if (!m) { bad++; return }
       const url = m[0].replace(/[,，]$/, ''); let name = line.replace(m[0], '').replace(/[,，$|\s]+/g, ' ').trim();
-      if (cfg[kind].some(x => x[field] === url)) { skip++; return }
-      cfg[kind].push(isSrc ? { key: uid('s'), name: name || hostOf(url), api: cleanApi(url), type: detectType(url), enabled: true, order: 0, default: cfg.sources.length === 0, parses: [], lineParses: {}, adFilter: null }
-        : { key: uid('p'), name: name || hostOf(url), url, type: 'json', enabled: true, order: 0, headers: {}, timeout: 0, jsonPath: '' });
+      if (cfg[kind].some(x => x[field] === url && (isSrc || isGlobal(x)))) { skip++; return }
+      cfg[kind].push(isSrc ? { key: uid('s'), name: name || hostOf(url), api: cleanApi(url), type: detectType(url), enabled: true, order: 0, default: cfg.sources.length === 0, parses: [], lineParses: {}, adFilter: null, kernel: '' }
+        : { key: uid('p'), name: name || hostOf(url), url, type: 'json', enabled: true, order: 0, headers: {}, timeout: 0, jsonPath: '', owner: '' });
       add++;
     });
     renderList(kind); refreshBar();
@@ -679,8 +842,23 @@ function openBulk(kind) {
 }
 
 /* ================= 播放器 / 公告 ================= */
+const PRESETS = [
+  ['fast', '极速起播', '缓冲半秒就开播；起播 0.5 秒 / 缓冲 4~30 秒 / 超时 5 秒'],
+  ['balanced', '均衡', '默认；起播 1 秒 / 缓冲 15~30 秒（与 v1.1 相同）'],
+  ['smooth', '流畅优先（大缓冲）', '网络不稳时更少卡顿；起播 2.5 秒 / 缓冲 30~120 秒'],
+  ['custom', '自定义', '下面的每一项自己设'],
+];
+// [key, 类型, 标题, 说明, min, max, step, 只在「自定义」时显示]
 const PLAYER_FIELDS = [
-  ['bufferSeconds', 'num', '缓冲时长（秒）', '越大越不容易卡，但更耗流量。建议 20~60', 10, 120],
+  ['startMs', 'num', '起播缓冲（毫秒）', '缓冲多少就开始播，越小起播越快', 100, 5000, 100, 1],
+  ['rebufferMs', 'num', '卡顿后恢复缓冲（毫秒）', '卡住后缓冲多少再继续', 100, 10000, 100, 1],
+  ['minBufferSeconds', 'num', '最少缓冲（秒）', '', 1, 60, 1, 1],
+  ['bufferSeconds', 'num', '最多缓冲（秒）', '越大越不容易卡，但更耗流量。建议 20~60', 10, 300, 1, 1],
+  ['cacheMb', 'num', '边播边存缓存（MB）', '', 64, 4096, 64, 1],
+  ['connectTimeout', 'num', '连接超时（秒）', '', 2, 60, 1, 1],
+  ['readTimeout', 'num', '读取超时（秒）', '', 3, 120, 1, 1],
+  ['preloadNext', 'bool', '预加载下一集', '看到后面时提前缓冲下一集，切集更快', 0, 0, 0, 1],
+  ['dnsPrefetch', 'bool', 'DNS 预解析 / 连接预热', '启动和打开详情页时提前与源、解析接口建立连接', 0, 0, 0, 1],
   ['defaultSpeed', 'num', '默认倍速', '0.5 ~ 3', 0.5, 3, 0.25],
   ['longPressSpeed', 'num', '长按快进倍速', '按住屏幕时的临时倍速', 1.5, 4, 0.5],
   ['skipIntro', 'num', '默认跳过片头（秒）', '0 表示不跳过；用户可对每部剧单独设置', 0, 300],
@@ -688,15 +866,23 @@ const PLAYER_FIELDS = [
   ['downloadConcurrency', 'num', '下载线程数', '每个下载任务同时下载的分片数，1~16', 1, 16],
   ['maxDownloadTasks', 'num', '最大同时下载任务', '1~5', 1, 5],
   ['hwDecode', 'bool', '硬件解码', '关闭后兼容性更好但更耗电'],
-  ['preloadNext', 'bool', '预加载下一集', '看到后面时提前缓冲下一集，切集更快'],
+  ['parseRace', 'bool', '解析竞速', '前两个解析接口同时请求，先返回能用地址的胜出（更快，多一次请求）'],
   ['autoNext', 'bool', '自动播放下一集', ''],
   ['directFirst', 'bool', '直链优先', 'm3u8 / mp4 地址直接播放，不走解析接口（推荐开启）'],
   ['autoSpeedTest', 'bool', '自动选择最快线路', '打开详情页时自动测速并选最快的播放线路'],
 ];
 function renderPlayer() {
-  $('#playerForm').innerHTML = PLAYER_FIELDS.map(([k, t, label, help, min, max, step]) => `<div class="opt"><div class="l">${label}<small>${help}</small></div>${t === 'bool'
-    ? `<label class="sw"><input type="checkbox" ${cfg.player[k] ? 'checked' : ''} onchange="cfg.player.${k}=this.checked;refreshBar()"><span></span></label>`
-    : `<input type="number" min="${min}" max="${max}" step="${step || 1}" value="${cfg.player[k]}" onchange="setNum('${k}',this,${min},${max})">`}</div>`).join('');
+  const p = cfg.player, custom = p.preset === 'custom';
+  const row = ([k, t, label, help, min, max, step]) => `<div class="opt"><div class="l">${label}<small>${help}</small></div>${t === 'bool'
+    ? `<label class="sw"><input type="checkbox" ${p[k] ? 'checked' : ''} onchange="cfg.player.${k}=this.checked;refreshBar()"><span></span></label>`
+    : `<input type="number" min="${min}" max="${max}" step="${step || 1}" value="${p[k]}" onchange="setNum('${k}',this,${min},${max})">`}</div>`;
+  $('#playerForm').innerHTML = `
+    <div class="opt"><div class="l">默认播放内核<small>自动 = 先 ExoPlayer，格式不支持时自动换 IJK；手动指定后不再自动切换</small></div>
+      <select id="pKernel" style="width:auto" onchange="cfg.player.kernel=this.value;refreshBar()">${[['auto', '自动（推荐）'], ['exo', 'ExoPlayer'], ['ijk', 'IJK（格式最全）'], ['system', '系统播放器（最省内存）']].map(([k, l]) => `<option value="${k}" ${p.kernel === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+    <div class="opt" style="display:block"><div class="l">加载策略<small>影响起播速度和卡顿。用户在 App 里也可以改</small></div>
+      <div class="presets">${PRESETS.map(([id, l, h]) => `<label><input type="radio" name="preset" value="${id}" ${p.preset === id ? 'checked' : ''} onchange="cfg.player.preset=this.value;renderPlayer();refreshBar()"> ${l}<small>${h}</small></label>`).join('')}</div></div>
+    ${custom ? '<div class="meta" style="margin-top:10px">自定义参数：</div>' + PLAYER_FIELDS.filter(f => f[7]).map(row).join('') : ''}
+    ${PLAYER_FIELDS.filter(f => !f[7]).map(row).join('')}`;
 }
 function setNum(k, el, min, max) {
   let v = parseFloat(el.value); if (isNaN(v)) v = DEFAULT_CFG.player[k];
@@ -719,11 +905,14 @@ function validate() {
   const chk = (kind, field, label) => {
     const seen = new Set();
     cfg[kind].forEach((x, i) => {
-      if (!isUrl(x[field])) errs.push(`${label}第 ${i + 1} 个的地址无效`);
-      if (seen.has(x[field])) errs.push(`${label}「${x.name}」地址重复`); seen.add(x[field]);
+      const who = kind === 'parses' && x.owner ? `「${srcName(x.owner)}」的解析接口` : label;
+      if (!isUrl(x[field])) errs.push(`${who}第 ${i + 1} 个的地址无效`);
+      // 同一个地址：通用解析里不能重复，同一个源里不能重复；不同源各自填同一个解析是允许的
+      const id = (x.owner || '') + '|' + x[field];
+      if (seen.has(id)) errs.push(`${who}「${x.name}」地址重复`); seen.add(id);
     });
   };
-  chk('sources', 'api', '播放源'); chk('parses', 'url', '解析接口');
+  chk('sources', 'api', '播放源'); chk('parses', 'url', '通用解析');
   danglingBindings().forEach(({ s, keys }) => errs.push(`播放源「${s.name || hostOf(s.api)}」绑定的解析接口已被删除：${keys.join('、')}`));
   cfg.sources.forEach(s => { if (s.adFilter && s.adFilter.regex) { try { new RegExp(s.adFilter.regex) } catch (e) { errs.push(`播放源「${s.name}」的去广告正则写法有误`) } } });
   cfg.parses.forEach(p => { if (p.headers && p.headers.Referer && !isUrl(p.headers.Referer)) errs.push(`解析接口「${p.name}」的 Referer 不是完整地址`) });
@@ -748,19 +937,22 @@ function lineDiff(a, b) {
 function summaryHtml() {
   const old = cfgOrig ? normalize(JSON.parse(cfgOrig)) : normalize(DEFAULT_CFG), now = finalCfg(), out = [];
   const nm = (x, f) => esc(x.name || hostOf(x[f]));
-  for (const [kind, f, label] of [['sources', 'api', '播放源'], ['parses', 'url', '解析接口']]) {
-    const o = new Map(old[kind].map(x => [x.key, x])), n = new Map(now[kind].map(x => [x.key, x]));
-    const added = now[kind].filter(x => !o.has(x.key)), gone = old[kind].filter(x => !n.has(x.key));
+  for (const [kind, f, label] of [['sources', 'api', '播放源'], ['parses', 'url', '通用解析']]) {
+    const pick = l => kind === 'parses' ? l.filter(isGlobal) : l;
+    const o = new Map(pick(old[kind]).map(x => [x.key, x])), n = new Map(pick(now[kind]).map(x => [x.key, x]));
+    const added = pick(now[kind]).filter(x => !o.has(x.key)), gone = pick(old[kind]).filter(x => !n.has(x.key));
     const J = v => JSON.stringify(v ?? null);
-    const changed = now[kind].filter(x => o.has(x.key) && ['name', f, 'type', 'enabled', 'default', 'timeout', 'jsonPath'].some(k => (o.get(x.key)[k] ?? '') !== (x[k] ?? '')) || (o.has(x.key) && J(o.get(x.key).headers || {}) !== J(x.headers || {})));
+    const changed = pick(now[kind]).filter(x => o.has(x.key) && ['name', f, 'type', 'enabled', 'default', 'timeout', 'jsonPath'].some(k => (o.get(x.key)[k] ?? '') !== (x[k] ?? '')) || (o.has(x.key) && J(o.get(x.key).headers || {}) !== J(x.headers || {})));
     if (kind === 'sources') {
       const nmK = k => esc(parseLabel(k).name), oldS = now[kind].filter(x => o.has(x.key));
       oldS.forEach(x => {
         const y = normalize({ sources: [o.get(x.key)] }).sources[0], z = normalize({ sources: [x] }).sources[0];
-        if (J(y.parses) !== J(z.parses) || J(y.lineParses) !== J(z.lineParses)) {
+        const ownSig = c => J(c.parses.filter(p => p.owner === x.key).map(p => [p.name, p.url, p.type, p.headers, p.timeout, p.jsonPath]));
+        if (J(y.parses) !== J(z.parses) || J(y.lineParses) !== J(z.lineParses) || ownSig(old) !== ownSig(now)) {
           const lp = Object.entries(z.lineParses).map(([n, ks]) => `线路「${esc(n)}」→ ${ks.map(nmK).join('、')}`);
-          out.push(`🔗 「${nm(x, f)}」解析绑定：${z.parses.length ? z.parses.map(nmK).join('、') : '不绑定（按测速）'}${lp.length ? '；' + lp.join('；') : ''}`);
+          out.push(`🔗 「${nm(x, f)}」解析接口：${z.parses.length ? z.parses.map(nmK).join('、') : '不指定（直链直接播，非直链用通用解析）'}${lp.length ? '；' + lp.join('；') : ''}`);
         }
+        if ((y.kernel || '') !== (z.kernel || '')) out.push(`🎬 「${nm(x, f)}」首选内核：${esc(KERNEL_NAME[z.kernel] || '跟随 App 设置')}`);
         if (J(y.adFilter && adIsDefault(y.adFilter) ? null : y.adFilter) !== J(z.adFilter && adIsDefault(z.adFilter) ? null : z.adFilter)) {
           const a = z.adFilter;
           out.push(`🧹 「${nm(x, f)}」去广告：${a && !a.enabled ? '本源关闭' : a ? `智能识别 + ${a.keywords.length} 个关键词${a.regex ? ' + 正则' : ''}` : '智能识别（默认）'}`);
@@ -768,17 +960,20 @@ function summaryHtml() {
       });
       added.forEach(x => {
         const z = normalize({ sources: [x] }).sources[0], a = z.adFilter;
-        if (z.parses.length || Object.keys(z.lineParses).length) out.push(`🔗 「${nm(x, f)}」解析绑定：${z.parses.length ? z.parses.map(nmK).join('、') : '—'}${Object.entries(z.lineParses).map(([n, ks]) => `；线路「${esc(n)}」→ ${ks.map(nmK).join('、')}`).join('')}`);
+        if (z.kernel) out.push(`🎬 「${nm(x, f)}」首选内核：${esc(KERNEL_NAME[z.kernel])}`);
+        if (z.parses.length || Object.keys(z.lineParses).length) out.push(`🔗 「${nm(x, f)}」解析接口：${z.parses.length ? z.parses.map(nmK).join('、') : '—'}${Object.entries(z.lineParses).map(([n, ks]) => `；线路「${esc(n)}」→ ${ks.map(nmK).join('、')}`).join('')}`);
         if (a && !adIsDefault(a)) out.push(`🧹 「${nm(x, f)}」去广告：${!a.enabled ? '本源关闭' : `智能识别 + ${a.keywords.length} 个关键词${a.regex ? ' + 正则' : ''}`}`);
       });
     }
-    const moved = now[kind].filter(x => o.has(x.key)).map(x => x.key).join() !== old[kind].filter(x => n.has(x.key)).map(x => x.key).join();
+    const moved = pick(now[kind]).filter(x => o.has(x.key)).map(x => x.key).join() !== pick(old[kind]).filter(x => n.has(x.key)).map(x => x.key).join();
     if (added.length) out.push(`➕ 新增${label} ${added.length} 个：${added.map(x => nm(x, f)).join('、')}`);
     if (gone.length) out.push(`🗑 删除${label} ${gone.length} 个：${gone.map(x => nm(x, f)).join('、')}`);
     if (changed.length) out.push(`✏️ 修改${label}：${changed.map(x => nm(x, f)).join('、')}`);
     if (moved) out.push(`↕️ 调整了${label}顺序`);
   }
-  const pc = PLAYER_FIELDS.filter(([k]) => old.player[k] !== now.player[k]).map(([k, , l]) => { const f = v => typeof v === 'boolean' ? (v ? '开' : '关') : v; return `${l} ${f(old.player[k])} → ${f(now.player[k])}` });
+  const PL = [['kernel', 0, '默认内核'], ['preset', 0, '加载策略'], ...PLAYER_FIELDS];
+  const fv = (k, v) => k === 'kernel' ? (KERNEL_NAME[v] || v) : k === 'preset' ? ((PRESETS.find(x => x[0] === v) || [, v])[1]) : typeof v === 'boolean' ? (v ? '开' : '关') : v;
+  const pc = PL.filter(([k]) => old.player[k] !== now.player[k]).map(([k, , l]) => `${l} ${fv(k, old.player[k])} → ${fv(k, now.player[k])}`);
   if (pc.length) out.push('⚙️ 播放器：' + esc(pc.join('；')));
   if (JSON.stringify(old.notice) !== JSON.stringify(now.notice)) out.push(now.notice.enabled ? `📣 公告：${esc(now.notice.title)}：${esc(now.notice.text)}` : '📣 关闭公告');
   if (pretty(removed) !== removedOrig) out.push('♻️ 更新了「已自动移除」列表');
@@ -822,8 +1017,9 @@ async function save(publish) {
     }
     if (publish) {
       await dispatch('build.yml', { release: 'true', changelog: $('#relLog').value.split('\n').map(s => s.trim()).filter(Boolean).join('|'), force: $('#relForce').checked ? 'true' : 'false' });
+      hideSpeedBanner();
       expectRun('build.yml'); toast('✅ 已保存，并已开始编译发布（约 5~10 分钟）', 4000); switchTab('release');
-    } else toast('✅ 已保存到仓库（未发布，下次发布时生效）');
+    } else toast('✅ 已保存到仓库（不会编译；点「编译发布」后 App 才会更新）', 3600);
   } catch (e) {
     if (e.status === 409 || e.status === 422) toast('❌ 保存冲突：仓库里的配置已被其他地方修改，请点「刷新」后重试', 5000);
     else if (e.status === 403 || e.status === 404) toast('❌ 没有权限：请确认令牌有本仓库的 Contents 读写和 Actions 读写权限', 5000);
@@ -832,6 +1028,8 @@ async function save(publish) {
 }
 
 /* ================= 发布 / 测速 状态 ================= */
+function showSpeedBanner() { LS.set('speedPending', '1'); $('#speedBanner').classList.remove('hidden') }
+function hideSpeedBanner() { LS.del('speedPending'); $('#speedBanner').classList.add('hidden') }
 async function triggerBuild() { await save(true) }
 async function runSpeedTest() {
   if (cfg && isDirty()) {
@@ -839,8 +1037,9 @@ async function runSpeedTest() {
     await save(false);
     if (isDirty()) return; // 保存失败
   }
-  if (!confirm('在 GitHub 服务器上测试所有播放源和解析接口？\n约需 1~2 分钟。连续 3 次失败的会被自动移除，源列表变化时会自动编译发布新版本。')) return;
-  try { await dispatch('source-check.yml', { rebuild: 'true' }); expectRun('source-check.yml'); toast('⚡ 已开始测速（约 1~2 分钟），完成后会自动刷新结果', 4000); switchTab('release') }
+  if (!confirm('在 GitHub 服务器上测试所有播放源和解析接口？\n约需 1~2 分钟。测速只会保存结果（按速度排序、连续 3 次失败的自动移除），不会编译。\n测完后点「编译发布」，App 才会用上新的顺序。')) return;
+  // rebuild=false：测速只保存，不触发编译（编译只由「编译发布」按钮触发）
+  try { await dispatch('source-check.yml', { rebuild: 'false' }); expectRun('source-check.yml'); toast('⚡ 已开始测速（约 1~2 分钟），完成后会自动刷新结果', 4000); switchTab('release') }
   catch (e) { toast('❌ 触发失败：' + esc(e.message) + '（令牌需要 Actions 读写权限）', 5000) }
 }
 const RUN_ICON = r => r.status !== 'completed' ? '⏳' : r.conclusion === 'success' ? '✅' : r.conclusion === 'skipped' ? '⏭' : '❌';
@@ -866,7 +1065,8 @@ async function loadRuns() {
     const checkRunning = c.workflow_runs.some(r => r.status !== 'completed');
     if (seenCheckRunning && !checkRunning) {
       // 测速刚结束：配置可能被自动排序 / 移除，没有未保存修改时自动重新读取
-      if (cfg && !isDirty()) { toast('⚡ 测速完成，已更新测速结果'); reloadAll() }
+      showSpeedBanner();
+      if (cfg && !isDirty()) { toast('⚡ 测速完成，结果已保存。点「编译发布」后 App 才会更新', 5000); reloadAll() }
       else toast('⚡ 测速完成。你有未保存的修改，保存前请先点「⟳ 刷新」获取最新测速结果', 5000);
     }
     seenCheckRunning = checkRunning;
@@ -939,6 +1139,7 @@ function logout() { ['token'].forEach(LS.del); conf.token = ''; closeModal(); lo
 
 /* ================= 启动 ================= */
 switchTab('sources');
+if (LS.get('speedPending')) $('#speedBanner').classList.remove('hidden');
 reloadAll();
 </script>
 </body>
