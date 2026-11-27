@@ -1,6 +1,43 @@
 {
-  "configVersion": 1,
-  "sources": [],
+  "configVersion": 2,
+  "sources": [
+    {
+      "key": "smwyqrj2okg9o",
+      "name": "naixx",
+      "api": "https://naixxzy.com/api.php/provide/vod/at/xml/",
+      "type": "xml",
+      "enabled": true,
+      "order": 1,
+      "default": true
+    },
+    {
+      "key": "smwyqruumrwa2",
+      "name": "大地",
+      "api": "https://dadiapi.com/api.php/provide/vod/",
+      "type": "json",
+      "enabled": true,
+      "order": 2,
+      "default": false
+    },
+    {
+      "key": "smwyqse75b5yz",
+      "name": "仓库",
+      "api": "https://hsckzy888.com/api.php/provide/vod/at/xml/",
+      "type": "xml",
+      "enabled": true,
+      "order": 3,
+      "default": false
+    },
+    {
+      "key": "smwyqszvzv82g",
+      "name": "xye",
+      "api": "https://xyezy.com/api.php/provide/vod/at/xml/",
+      "type": "xml",
+      "enabled": true,
+      "order": 4,
+      "default": false
+    }
+  ],
   "parses": [],
   "player": {
     "bufferSeconds": 30,
@@ -9,8 +46,8 @@
     "autoNext": true,
     "skipIntro": 0,
     "skipOutro": 0,
-    "defaultSpeed": 1.0,
-    "longPressSpeed": 3.0,
+    "defaultSpeed": 1,
+    "longPressSpeed": 3,
     "directFirst": true,
     "autoSpeedTest": true,
     "downloadConcurrency": 8,
