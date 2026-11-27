@@ -1,32 +1,32 @@
 {
-  "versionCode": 105,
-  "versionName": "1.0.0-r5",
-  "apkUrl": "https://github.com/asd5772525/VideoPlayer-src/releases/download/v1.0.0-r5/VideoPlayer-v1.0.0-r5-universal.apk",
+  "versionCode": 107,
+  "versionName": "1.0.0-r7",
+  "apkUrl": "https://github.com/asd5772525/VideoPlayer-src/releases/download/v1.0.0-r7/VideoPlayer-v1.0.0-r7-universal.apk",
   "size": "3.0 MB",
   "changelog": [
-    "up"
+    "播放源按速度重新排序"
   ],
   "force": false,
-  "md5": "1b5a6eb757a2b88588792099e5e263be",
+  "md5": "456c3e7cbc7695a4c5133588461e95a4",
   "apks": {
     "arm64-v8a": {
-      "url": "https://github.com/asd5772525/VideoPlayer-src/releases/download/v1.0.0-r5/VideoPlayer-v1.0.0-r5-arm64-v8a.apk",
-      "md5": "bf011b090705c731e160a30726fb9ab3",
+      "url": "https://github.com/asd5772525/VideoPlayer-src/releases/download/v1.0.0-r7/VideoPlayer-v1.0.0-r7-arm64-v8a.apk",
+      "md5": "5b82665b293adc6186d7dd26892d7e17",
       "size": "2.9 MB"
     },
     "armeabi-v7a": {
-      "url": "https://github.com/asd5772525/VideoPlayer-src/releases/download/v1.0.0-r5/VideoPlayer-v1.0.0-r5-armeabi-v7a.apk",
-      "md5": "d905fe22812337f54145a96d5244aa1e",
+      "url": "https://github.com/asd5772525/VideoPlayer-src/releases/download/v1.0.0-r7/VideoPlayer-v1.0.0-r7-armeabi-v7a.apk",
+      "md5": "1ad0bc7c57f0da63ae98ebf687d2aebf",
       "size": "2.9 MB"
     },
     "universal": {
-      "url": "https://github.com/asd5772525/VideoPlayer-src/releases/download/v1.0.0-r5/VideoPlayer-v1.0.0-r5-universal.apk",
-      "md5": "1b5a6eb757a2b88588792099e5e263be",
+      "url": "https://github.com/asd5772525/VideoPlayer-src/releases/download/v1.0.0-r7/VideoPlayer-v1.0.0-r7-universal.apk",
+      "md5": "456c3e7cbc7695a4c5133588461e95a4",
       "size": "3.0 MB"
     },
     "x86_64": {
-      "url": "https://github.com/asd5772525/VideoPlayer-src/releases/download/v1.0.0-r5/VideoPlayer-v1.0.0-r5-x86_64.apk",
-      "md5": "23afbe08513ad3f7bcd1e31fc350d272",
+      "url": "https://github.com/asd5772525/VideoPlayer-src/releases/download/v1.0.0-r7/VideoPlayer-v1.0.0-r7-x86_64.apk",
+      "md5": "55dbc7b5aacc53ac960f88d25a872016",
       "size": "2.9 MB"
     }
   }
