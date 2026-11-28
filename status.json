@@ -1,34 +1,34 @@
 {
   "sources": {
     "https://hsckzy888.com/api.php/provide/vod/at/xml/": {
-      "latency": -1,
-      "ok": false,
-      "lastCheck": 1795797476,
-      "failCount": 1,
-      "error": "HTTP Error 523: <none>"
+      "latency": 399,
+      "ok": true,
+      "lastCheck": 1795829245,
+      "failCount": 0,
+      "error": ""
     },
     "https://xyezy.com/api.php/provide/vod/at/xml/": {
-      "latency": 1157,
+      "latency": 1129,
       "ok": true,
-      "lastCheck": 1795797476,
+      "lastCheck": 1795829245,
       "failCount": 0,
       "error": ""
     },
     "https://dadiapi.com/api.php/provide/vod/": {
-      "latency": 1094,
+      "latency": 1039,
       "ok": true,
-      "lastCheck": 1795797476,
+      "lastCheck": 1795829245,
       "failCount": 0,
       "error": ""
     },
     "https://naixxzy.com/api.php/provide/vod/at/xml/": {
-      "latency": 569,
+      "latency": 527,
       "ok": true,
-      "lastCheck": 1795797476,
+      "lastCheck": 1795829245,
       "failCount": 0,
       "error": ""
     }
   },
   "parses": {},
-  "updatedAt": 1795797476
+  "updatedAt": 1795829245
 }
